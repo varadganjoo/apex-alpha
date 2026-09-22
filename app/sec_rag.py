@@ -176,7 +176,7 @@ class SECFilingRAG:
 
     @classmethod
     def verify_citation(cls, symbol: str, quote_text: str) -> bool:
-        """Verifies whether a claim's citation is a verbatim substring of official SEC disclosures."""
+        """Verifies whether a claim's citation is a verbatim substring of sample SEC filing disclosures."""
         excerpts = cls.get_excerpts(symbol)
         clean_target = " ".join(quote_text.lower().split())
         for raw_text in excerpts.values():

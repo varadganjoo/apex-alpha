@@ -59,7 +59,7 @@ flowchart TD
 
 ## 📸 Quantitative Terminal & Workstation
 
-A Bloomberg-style quantitative trading workstation featuring real-time ticker tape, multi-horizon probability cones, grounded SEC filing citations, and portfolio risk sizing:
+A Bloomberg-style quantitative trading workstation featuring an interactive ticker tape, multi-horizon probability cones, grounded SEC filing citations, and portfolio risk sizing:
 
 ### 1. Market Screener & Benchmark Coverage
 Displays benchmark universe coverage (NVDA, AAPL, MSFT, TSLA) with sample OHLCV quotes, daily returns, market capitalizations, and financial ratios.
