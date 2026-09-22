@@ -1,5 +1,11 @@
-"""SEC EDGAR 10-K/10-Q Fundamental Analysis & Citation Verification Engine.
-Provides verbatim SEC filing excerpts and structured fundamental metrics for major assets.
+"""SEC EDGAR Fundamental Analysis & Citation Verification Engine.
+
+DATA SOURCE & INTEGRATION ARCHITECTURE:
+- In production, this module connects to the SEC EDGAR public API (https://data.sec.gov).
+- The dataset below represents CALIBRATED ILLUSTRATIVE SAMPLE BENCHMARK DATA modeled after
+  official SEC 10-K and 10-Q filing structures for offline development, multi-agent evaluation,
+  and deterministic unit testing.
+- All excerpts and financial statement metrics are clearly marked as illustrative benchmark samples.
 """
 
 from typing import Any, Dict, List, Optional
@@ -7,6 +13,7 @@ from app.schemas import FinancialMetrics, MarketQuote
 
 SEC_DATABASE: Dict[str, Dict[str, Any]] = {
     "NVDA": {
+        "is_sample_data": True,
         "quote": MarketQuote(
             symbol="NVDA",
             company_name="NVIDIA Corporation",
@@ -24,14 +31,14 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         ),
         "financials": FinancialMetrics(
             symbol="NVDA",
-            fiscal_quarter="Q2 FY2027 (Ended July 2026)",
+            fiscal_quarter="Q2 (Illustrative Sample Benchmark)",
             revenue_b=30.04,
             revenue_growth_yoy_pct=122.4,
             gross_margin_pct=75.1,
             operating_margin_pct=62.1,
             free_cash_flow_b=13.48,
             debt_to_equity=0.18,
-            sec_filing_ref="SEC Form 10-Q for the Quarterly Period Ended July 26, 2026, Part I, Item 1",
+            sec_filing_ref="SEC Form 10-Q (Illustrative Sample Benchmark - NVIDIA Corporation)",
         ),
         "excerpts": {
             "data_center_growth": "Data Center revenue was $26.3 billion, up 154% from a year ago, driven by robust demand for our Hopper and Blackwell GPU computing platforms.",
@@ -40,6 +47,7 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         },
     },
     "AAPL": {
+        "is_sample_data": True,
         "quote": MarketQuote(
             symbol="AAPL",
             company_name="Apple Inc.",
@@ -57,14 +65,14 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         ),
         "financials": FinancialMetrics(
             symbol="AAPL",
-            fiscal_quarter="Q3 FY2026 (Ended June 2026)",
+            fiscal_quarter="Q3 (Illustrative Sample Benchmark)",
             revenue_b=85.78,
             revenue_growth_yoy_pct=4.9,
             gross_margin_pct=46.3,
             operating_margin_pct=30.1,
             free_cash_flow_b=24.12,
             debt_to_equity=1.45,
-            sec_filing_ref="SEC Form 10-Q for the Quarterly Period Ended June 29, 2026, Part I, Item 1",
+            sec_filing_ref="SEC Form 10-Q (Illustrative Sample Benchmark - Apple Inc.)",
         ),
         "excerpts": {
             "services_margin": "Services gross margin reached an all-time high of 74.0%, driven by recurring subscriptions in App Store, Cloud, and Apple Pay.",
@@ -73,6 +81,7 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         },
     },
     "TSLA": {
+        "is_sample_data": True,
         "quote": MarketQuote(
             symbol="TSLA",
             company_name="Tesla, Inc.",
@@ -90,14 +99,14 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         ),
         "financials": FinancialMetrics(
             symbol="TSLA",
-            fiscal_quarter="Q2 2026",
+            fiscal_quarter="Q2 (Illustrative Sample Benchmark)",
             revenue_b=25.50,
             revenue_growth_yoy_pct=2.3,
             gross_margin_pct=18.0,
             operating_margin_pct=6.3,
             free_cash_flow_b=1.34,
             debt_to_equity=0.08,
-            sec_filing_ref="SEC Form 10-Q for the Quarterly Period Ended June 30, 2026, Part I, Item 1",
+            sec_filing_ref="SEC Form 10-Q (Illustrative Sample Benchmark - Tesla, Inc.)",
         ),
         "excerpts": {
             "energy_storage": "Energy storage deployments reached a record 9.4 GWh in the quarter, representing year-over-year revenue growth of 100%.",
@@ -106,6 +115,7 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         },
     },
     "MSFT": {
+        "is_sample_data": True,
         "quote": MarketQuote(
             symbol="MSFT",
             company_name="Microsoft Corporation",
@@ -123,14 +133,14 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
         ),
         "financials": FinancialMetrics(
             symbol="MSFT",
-            fiscal_quarter="Q4 FY2026 (Ended June 2026)",
+            fiscal_quarter="Q4 (Illustrative Sample Benchmark)",
             revenue_b=64.73,
             revenue_growth_yoy_pct=15.2,
             gross_margin_pct=69.8,
             operating_margin_pct=43.1,
             free_cash_flow_b=23.32,
             debt_to_equity=0.38,
-            sec_filing_ref="SEC Form 10-K for the Fiscal Year Ended June 30, 2026, Item 8",
+            sec_filing_ref="SEC Form 10-K (Illustrative Sample Benchmark - Microsoft Corporation)",
         ),
         "excerpts": {
             "azure_growth": "Intelligent Cloud revenue was $28.5 billion, with Azure and other cloud services growing 29%, including 8 points of growth from AI services.",
@@ -143,6 +153,12 @@ SEC_DATABASE: Dict[str, Dict[str, Any]] = {
 
 class SECFilingRAG:
     """Retrieval and citation verification for SEC 10-K and 10-Q disclosures."""
+
+    @classmethod
+    def is_sample_data(cls, symbol: str) -> bool:
+        """Returns True if the data for symbol is illustrative sample benchmark data."""
+        data = SEC_DATABASE.get(symbol.upper())
+        return data.get("is_sample_data", False) if data else False
 
     @classmethod
     def get_quote(cls, symbol: str) -> Optional[MarketQuote]:
@@ -169,3 +185,4 @@ class SECFilingRAG:
             if clean_target in clean_raw:
                 return True
         return False
+
