@@ -6,7 +6,7 @@
 [![Tests](https://img.shields.io/badge/Tests-19%20Passed%20(100%25)-emerald.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-gray.svg)](LICENSE)
 
-> **Apex-Alpha** is a quantitative research toolkit and market intelligence terminal. It integrates **Geometric Brownian Motion jump-diffusion modeling ($P_{10}, P_{50}, P_{90}$)**, **adversarial Bull vs. Bear multi-agent analysis grounded in SEC EDGAR disclosures**, and **mathematical risk guardrails (VaR 95%, CVaR, Fractional Kelly Criterion)** with LangGraph Human-in-the-Loop checkpoints for order staging.
+> **Apex-Alpha** is a quantitative research toolkit and market intelligence terminal. It integrates **Geometric Brownian Motion jump-diffusion modeling ($P_{10}, P_{50}, P_{90}$)**, **adversarial Bull vs. Bear multi-agent analysis grounded in sample SEC disclosure filings**, and **mathematical risk guardrails (VaR 95%, CVaR, Fractional Kelly Criterion)** with LangGraph Human-in-the-Loop checkpoints for order staging.
 
 ---
 
@@ -15,7 +15,7 @@
 Apex-Alpha grounds its adversarial multi-agent debate in official SEC Form 10-K and 10-Q disclosure structures. 
 
 > [!NOTE]
-> **Illustrative Sample Benchmark Dataset**: The repository includes a calibrated offline benchmark dataset representing official SEC filing structures for NVDA, AAPL, TSLA, and MSFT. This ensures deterministic multi-agent evaluation, reproducible backtesting, and offline testing without external rate-limiting. For live institutional deployment, the engine can be configured to fetch real-time filings via the SEC EDGAR API (`https://data.sec.gov`).
+> **Illustrative Sample Benchmark Dataset**: The repository includes a calibrated offline benchmark dataset representing official SEC filing structures for NVDA, AAPL, TSLA, and MSFT. This ensures deterministic multi-agent evaluation, reproducible backtesting, and offline testing without external rate-limiting. The system can be extended to pull from SEC EDGAR for live filing ingestion.
 
 ---
 
@@ -24,8 +24,8 @@ Apex-Alpha grounds its adversarial multi-agent debate in official SEC Form 10-K 
 ```mermaid
 flowchart TD
     subgraph DataIngestion["1. Data & Filings Ingestion"]
-        Quotes["Real-Time Market Quotes<br/>(OHLCV, Volatility, Beta)"]
-        SEC["SEC EDGAR 10-K / 10-Q<br/>(Financials, Cash Flows, Disclosures)"]
+        Quotes["Sample Market Quotes<br/>(OHLCV, Volatility, Beta)"]
+        SEC["Sample SEC 10-K / 10-Q Data<br/>(Financials, Cash Flows, Disclosures)"]
     end
 
     subgraph QuantEngine["2. Quantitative Forecasting & Risk"]
@@ -62,7 +62,7 @@ flowchart TD
 A Bloomberg-style quantitative trading workstation featuring real-time ticker tape, multi-horizon probability cones, grounded SEC filing citations, and portfolio risk sizing:
 
 ### 1. Market Screener & Benchmark Coverage
-Displays institutional universe coverage (NVDA, AAPL, MSFT, TSLA) with live OHLCV price ticks, daily returns, market capitalizations, and real-time financial ratios.
+Displays benchmark universe coverage (NVDA, AAPL, MSFT, TSLA) with sample OHLCV quotes, daily returns, market capitalizations, and financial ratios.
 
 ![Market Screener](docs/images/01_market_screener_overview.png)
 
@@ -76,7 +76,7 @@ Simulates 10,000 price paths using Geometric Brownian Motion with jump diffusion
 ---
 
 ### 3. SEC 10-Q RAG & Citation Engine
-Extracts verbatim disclosures from SEC EDGAR filings (Item 1A Risk Factors, MD&A, segment revenues) with character-level grounding to ensure zero hallucination in financial analysis.
+Grounds analysis in verbatim disclosures from sample SEC filings (Item 1A Risk Factors, MD&A, segment revenues) with character-level citation verification (can be extended to pull from SEC EDGAR).
 
 ![SEC 10-Q RAG](docs/images/03_sec_10q_rag_evidence.png)
 

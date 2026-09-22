@@ -1,11 +1,10 @@
-"""SEC EDGAR Fundamental Analysis & Citation Verification Engine.
+"""Fundamental Analysis & Citation Verification Engine.
 
 DATA SOURCE & INTEGRATION ARCHITECTURE:
-- In production, this module connects to the SEC EDGAR public API (https://data.sec.gov).
-- The dataset below represents CALIBRATED ILLUSTRATIVE SAMPLE BENCHMARK DATA modeled after
-  official SEC 10-K and 10-Q filing structures for offline development, multi-agent evaluation,
-  and deterministic unit testing.
-- All excerpts and financial statement metrics are clearly marked as illustrative benchmark samples.
+- The dataset below represents sample data modeled after SEC 10-K and 10-Q filing structures
+  for offline development, multi-agent evaluation, and deterministic unit testing.
+- The system can be extended to pull from SEC EDGAR for live filing ingestion.
+- All excerpts and financial statement metrics are clearly marked as illustrative benchmark sample data.
 """
 
 from typing import Any, Dict, List, Optional
