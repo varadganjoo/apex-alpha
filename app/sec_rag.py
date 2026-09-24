@@ -1,14 +1,16 @@
 """Fundamental Analysis & Citation Verification Engine.
 
-DATA SOURCE & INTEGRATION ARCHITECTURE:
-- The dataset below represents sample data modeled after SEC 10-K and 10-Q filing structures
-  for offline development, multi-agent evaluation, and deterministic unit testing.
-- The system can be extended to pull from SEC EDGAR for live filing ingestion.
-- All excerpts and financial statement metrics are clearly marked as illustrative benchmark sample data.
+Quotes, fundamentals and filing excerpts come from live sources (see app/market_data.py). Each piece falls back
+independently to the illustrative sample dataset below when its source is unavailable, and every object records
+where it came from in its `source` field. APEX_DATA=sample forces the sample data (tests, offline work).
 """
 
+import logging
 from typing import Any, Dict, List, Optional
+from app import market_data
 from app.schemas import FinancialMetrics, MarketQuote
+
+logger = logging.getLogger("apex_alpha.sec_rag")
 
 SEC_DATABASE: Dict[str, Dict[str, Any]] = {
     "NVDA": {
@@ -162,21 +164,51 @@ class SECFilingRAG:
     @classmethod
     def get_quote(cls, symbol: str) -> Optional[MarketQuote]:
         data = SEC_DATABASE.get(symbol.upper())
-        return data["quote"] if data else None
+        if not data:
+            return None
+        if market_data.live_enabled():
+            try:
+                live = market_data.live_quote_fields(symbol.upper())
+                base = data["quote"].model_dump(exclude={"timestamp"})
+                # Keep the sample company name if Yahoo has none; never mix stale sample valuations into live data.
+                live["company_name"] = live.get("company_name") or base["company_name"]
+                return MarketQuote(**{**base, "pe_ratio": None, "forward_pe": None, "market_cap_b": None, **live})
+            except Exception as exc:
+                logger.warning(f"Live quote unavailable for {symbol}, using sample data: {exc}")
+        return data["quote"]
 
     @classmethod
     def get_financials(cls, symbol: str) -> Optional[FinancialMetrics]:
         data = SEC_DATABASE.get(symbol.upper())
-        return data["financials"] if data else None
+        if not data:
+            return None
+        if market_data.live_enabled():
+            try:
+                return FinancialMetrics(symbol=symbol.upper(), **market_data.sec_fundamentals(symbol.upper()))
+            except Exception as exc:
+                logger.warning(f"SEC fundamentals unavailable for {symbol}, using sample data: {exc}")
+        return data["financials"]
 
     @classmethod
     def get_excerpts(cls, symbol: str) -> Dict[str, str]:
+        return cls.get_excerpts_with_source(symbol)[0]
+
+    @classmethod
+    def get_excerpts_with_source(cls, symbol: str) -> tuple[Dict[str, str], Dict[str, str]]:
+        """Excerpts plus where they came from ({"source": "SEC EDGAR", "form", "filed", "url"} or {"source": "sample"})."""
         data = SEC_DATABASE.get(symbol.upper())
-        return data["excerpts"] if data else {}
+        if not data:
+            return {}, {"source": "none"}
+        if market_data.live_enabled():
+            try:
+                return market_data.sec_excerpts(symbol.upper())
+            except Exception as exc:
+                logger.warning(f"SEC excerpts unavailable for {symbol}, using sample data: {exc}")
+        return data["excerpts"], {"source": "sample"}
 
     @classmethod
     def verify_citation(cls, symbol: str, quote_text: str) -> bool:
-        """Verifies whether a claim's citation is a verbatim substring of sample SEC filing disclosures."""
+        """Verifies whether a claim's citation is a verbatim substring of the excerpts the committee was given."""
         excerpts = cls.get_excerpts(symbol)
         clean_target = " ".join(quote_text.lower().split())
         for raw_text in excerpts.values():

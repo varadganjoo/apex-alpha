@@ -5,9 +5,10 @@ Serves REST APIs for quantitative forecasting, adversarial debate, and the dark-
 import json
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -17,6 +18,7 @@ from langgraph.types import Command
 
 from app.debate import AdversarialDebateEngine
 from app.graph import apex_alpha_graph
+from app import market_data
 from app.llm import describe_llm_error
 from app.quant_engine import QuantitativeForecaster
 from app.risk_guard import RiskGuardEngine
@@ -39,6 +41,24 @@ app.add_middleware(
 )
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+# Read endpoints are cached at the CDN so serverless instances rarely refetch Yahoo or SEC data.
+CACHEABLE_PREFIXES = ("/api/tickers",)
+CDN_CACHE = "public, max-age=60, s-maxage=900, stale-while-revalidate=3600"
+
+
+@app.middleware("http")
+async def cdn_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if (
+        request.method == "GET"
+        and response.status_code == 200
+        and path.startswith(CACHEABLE_PREFIXES)
+        and not path.endswith("/stream")
+    ):
+        response.headers["Cache-Control"] = CDN_CACHE
+    return response
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
 
@@ -78,7 +98,7 @@ def _sse_guard(events: Iterator[str]) -> Iterator[str]:
 
 def _require_ticker(symbol: str) -> str:
     sym = symbol.upper()
-    if not SECFilingRAG.get_quote(sym):
+    if sym not in SEC_DATABASE:  # coverage check only; no live fetch
         raise HTTPException(status_code=404, detail=f"Ticker '{sym}' not found.")
     return sym
 
@@ -103,36 +123,48 @@ def health_check():
         "status": "healthy",
         "platform": "Apex-Alpha Quantitative Market Intelligence",
         "benchmark_tickers": list(SEC_DATABASE.keys()),
+        "data": "live" if market_data.live_enabled() else "sample",
     }
 
 
 @app.get("/api/tickers")
 def list_tickers():
-    """Lists benchmark assets with current quotes."""
+    """Covered assets with current quotes (live where available)."""
+    with ThreadPoolExecutor(max_workers=len(SEC_DATABASE)) as pool:
+        quotes = list(pool.map(SECFilingRAG.get_quote, SEC_DATABASE))
     return [
         {
-            "symbol": sym,
-            "company_name": data["quote"].company_name,
-            "price": data["quote"].price,
-            "change": data["quote"].change,
-            "change_pct": data["quote"].change_pct,
-            "pe_ratio": data["quote"].pe_ratio,
-            "beta": data["quote"].beta,
-            "market_cap_b": data["quote"].market_cap_b,
-            "is_sample_data": data.get("is_sample_data", False),
+            **quote.model_dump(include={
+                "symbol", "company_name", "price", "change", "change_pct", "pe_ratio",
+                "beta", "market_cap_b", "source", "as_of",
+            }),
+            "is_sample_data": quote.source == "sample",
         }
-        for sym, data in SEC_DATABASE.items()
+        for quote in quotes
     ]
 
 
 @app.get("/api/tickers/{symbol}/quote")
 def get_quote(symbol: str):
-    """Retrieves quote and SEC financial statement metrics."""
+    """Quote, latest-quarter fundamentals, and filing excerpts, with where each came from."""
     sym = _require_ticker(symbol)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        quote = pool.submit(SECFilingRAG.get_quote, sym)
+        financials = pool.submit(SECFilingRAG.get_financials, sym)
+        excerpts = pool.submit(SECFilingRAG.get_excerpts_with_source, sym)
+        quote, financials, (excerpt_map, excerpt_meta) = quote.result(), financials.result(), excerpts.result()
     return {
-        "quote": SECFilingRAG.get_quote(sym).model_dump(),
-        "financials": SECFilingRAG.get_financials(sym).model_dump(),
-        "excerpts": SECFilingRAG.get_excerpts(sym),
+        "quote": quote.model_dump(),
+        "financials": financials.model_dump(),
+        "excerpts": excerpt_map,
+        "sources": {
+            "prices": quote.source,
+            "prices_as_of": quote.as_of,
+            "fundamentals": financials.source,
+            "fundamentals_url": financials.filing_url,
+            "excerpts": excerpt_meta.get("source"),
+            "excerpts_filing": {k: excerpt_meta.get(k) for k in ("form", "filed", "url")} if excerpt_meta.get("url") else None,
+        },
     }
 
 

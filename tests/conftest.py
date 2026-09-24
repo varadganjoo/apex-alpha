@@ -10,6 +10,12 @@ from app.sec_rag import SECFilingRAG
 
 
 @pytest.fixture(autouse=True)
+def offline_sample_data(monkeypatch):
+    """Tests never hit Yahoo or SEC; test_market_data.py opts back in with mocked fetchers."""
+    monkeypatch.setenv("APEX_DATA", "sample")
+
+
+@pytest.fixture(autouse=True)
 def mock_gemini_apex(monkeypatch, request):
     """Mocks Gemini LLM structured outputs and text streaming for deterministic testing.
     Skips mocking for tests in test_llm.py so error handling and missing-key checks can be verified.

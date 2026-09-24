@@ -20,6 +20,14 @@ from app.schemas import (
 from app.sec_rag import SECFilingRAG
 
 
+def _multiple(value: float | None) -> str:
+    return f"{value}x" if value is not None else "n/a"
+
+
+def _billions(value: float | None) -> str:
+    return f"${value}B" if value is not None else "n/a"
+
+
 class AdversarialDebateEngine:
     """Orchestrates structured Bull vs. Bear debate and executive committee synthesis using Gemini."""
 
@@ -55,10 +63,10 @@ class AdversarialDebateEngine:
             f"Construct the institutional Bull thesis for {symbol} ({quote.company_name}).\n\n"
             f"Market Quote Data:\n"
             f"- Price: ${quote.price}\n"
-            f"- P/E Ratio: {quote.pe_ratio}x\n"
-            f"- Forward P/E: {quote.forward_pe}x\n"
+            f"- P/E Ratio: {_multiple(quote.pe_ratio)}\n"
+            f"- Forward P/E: {_multiple(quote.forward_pe)}\n"
             f"- Beta: {quote.beta}\n"
-            f"- Market Cap: ${quote.market_cap_b}B\n"
+            f"- Market Cap: {_billions(quote.market_cap_b)}\n"
             f"- 52-Week Range: ${quote.week_52_low} - ${quote.week_52_high}\n\n"
             f"Financial Statement Metrics ({financials.sec_filing_ref}):\n"
             f"- Revenue: ${financials.revenue_b}B (YoY Growth: {financials.revenue_growth_yoy_pct}%)\n"
@@ -93,10 +101,10 @@ class AdversarialDebateEngine:
             f"Construct the institutional Bear/Risk thesis for {symbol} ({quote.company_name}).\n\n"
             f"Market Quote Data:\n"
             f"- Price: ${quote.price}\n"
-            f"- P/E Ratio: {quote.pe_ratio}x\n"
-            f"- Forward P/E: {quote.forward_pe}x\n"
+            f"- P/E Ratio: {_multiple(quote.pe_ratio)}\n"
+            f"- Forward P/E: {_multiple(quote.forward_pe)}\n"
             f"- Beta: {quote.beta}\n"
-            f"- Market Cap: ${quote.market_cap_b}B\n"
+            f"- Market Cap: {_billions(quote.market_cap_b)}\n"
             f"- 52-Week Range: ${quote.week_52_low} - ${quote.week_52_high}\n\n"
             f"Financial Statement Metrics ({financials.sec_filing_ref}):\n"
             f"- Revenue: ${financials.revenue_b}B (YoY Growth: {financials.revenue_growth_yoy_pct}%)\n"
@@ -197,7 +205,7 @@ class AdversarialDebateEngine:
         # Step 2: Stream Bear Case
         yield f"event: stage\ndata: {json.dumps({'stage': 'bear', 'title': f'Bear Risk Officer: {symbol}'})}\n\n"
         bear_prompt = (
-            f"Provide the Bear/Risk thesis for {symbol} ({quote.company_name}) at P/E {quote.pe_ratio}x, Beta {quote.beta}. "
+            f"Provide the Bear/Risk thesis for {symbol} ({quote.company_name}) at P/E {_multiple(quote.pe_ratio)}, Beta {quote.beta}. "
             f"SEC Excerpts: {json.dumps(excerpts)}. "
             f"Highlight multiple risk, customer concentration, and macro headwinds. "
             f"Write a 2-paragraph risk thesis with bullet points and SEC citations in Markdown."

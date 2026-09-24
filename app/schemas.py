@@ -31,14 +31,16 @@ class MarketQuote(BaseModel):
     change: float
     change_pct: float
     volume: int
-    pe_ratio: float
-    forward_pe: float
+    pe_ratio: Optional[float] = None      # None when no source reports one (e.g. negative earnings)
+    forward_pe: Optional[float] = None
     beta: float
-    market_cap_b: float
+    market_cap_b: Optional[float] = None
     week_52_high: float
     week_52_low: float
     annualized_volatility: float = 0.32
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    source: str = "sample"                # "Yahoo Finance", "Tiingo", or "sample"
+    as_of: Optional[str] = None           # date of the last close for live data
 
 
 class FinancialMetrics(BaseModel):
@@ -51,6 +53,8 @@ class FinancialMetrics(BaseModel):
     free_cash_flow_b: float
     debt_to_equity: float
     sec_filing_ref: str  # e.g. "SEC Form 10-Q Q3 2026, Item 1"
+    source: str = "sample"  # "SEC EDGAR" or "sample"
+    filing_url: Optional[str] = None
 
 
 class QuantileForecast(BaseModel):
