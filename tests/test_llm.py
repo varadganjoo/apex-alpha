@@ -150,3 +150,68 @@ def test_daily_quota_plus_overloaded_fallbacks_is_retryable():
     ))
     assert (status, retryable) == (503, True)
     assert "fallback models are overloaded" in message
+
+
+# --- Groq backup ---
+
+@pytest.fixture(autouse=True)
+def no_groq_key_by_default(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+
+def _fake_groq(monkeypatch, calls: list):
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    json_text = DebateArgument(agent_type="bull", claim="c", thesis="t", evidence_points=["e"]).model_dump_json()
+
+    def fake(prompt, system_instruction="", schema=None, **kwargs):
+        calls.append(schema)
+        return json_text if schema is not None else (json_text if isinstance(json_text, str) else ("groq prose", 1, 2))
+
+    monkeypatch.setattr("app.llm.groq_chat", fake)
+
+
+def test_groq_serves_when_every_gemini_model_is_unavailable(monkeypatch):
+    gemini_calls = _client_failing(monkeypatch, {m: "429 RESOURCE_EXHAUSTED" for m in llm_module.MODEL_CHAIN})
+    groq_calls: list = []
+    _fake_groq(monkeypatch, groq_calls)
+    result = generate_structured(prompt="p", system_instruction="s", schema=DebateArgument)
+    assert result == DebateArgument(agent_type="bull", claim="c", thesis="t", evidence_points=["e"])
+    assert gemini_calls == llm_module.MODEL_CHAIN
+    assert groq_calls == [DebateArgument]
+
+
+def test_groq_serves_when_no_gemini_key(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "")
+    groq_calls: list = []
+    _fake_groq(monkeypatch, groq_calls)
+    result = generate_structured(prompt="p", system_instruction="s", schema=DebateArgument)
+    assert result == DebateArgument(agent_type="bull", claim="c", thesis="t", evidence_points=["e"])
+
+
+def test_groq_not_used_for_bad_request(monkeypatch):
+    _client_failing(monkeypatch, {"gemini-3.6-flash": "400 INVALID_ARGUMENT"})
+    groq_calls: list = []
+    _fake_groq(monkeypatch, groq_calls)
+    with pytest.raises(RuntimeError, match="400 INVALID_ARGUMENT"):
+        generate_structured(prompt="p", system_instruction="s", schema=DebateArgument)
+    assert groq_calls == []
+
+
+def test_groq_failure_is_reported_with_gemini_errors(monkeypatch):
+    _client_failing(monkeypatch, {m: "503 UNAVAILABLE" for m in llm_module.MODEL_CHAIN})
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("429 rate_limit_exceeded")
+
+    monkeypatch.setattr("app.llm.groq_chat", boom)
+    with pytest.raises(RuntimeError) as err:
+        generate_structured(prompt="p", system_instruction="s", schema=DebateArgument)
+    assert "groq" in str(err.value) and "gemini-3.8-flash" in str(err.value)
+
+
+def test_stream_falls_back_to_groq_as_one_chunk(monkeypatch):
+    _client_failing(monkeypatch, {m: "503 UNAVAILABLE" for m in llm_module.MODEL_CHAIN})
+    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
+    monkeypatch.setattr("app.llm.groq_chat", lambda *a, **k: "groq prose" if "apex-alpha" == "apex-alpha" else ("groq prose", 1, 2))
+    assert list(stream_text(prompt="p", system_instruction="s")) == ["groq prose"]
