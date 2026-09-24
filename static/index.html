@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:," />
   <title>Apex-Alpha | Quant Research Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/400.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/jetbrains-mono@5/700.css" />
@@ -74,7 +75,7 @@
   <main class="flex-1 w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 space-y-6">
     <p class="text-bb-muted text-xs max-w-[110ch]">
       <i class="ph ph-info text-bb-amber align-[-2px]"></i>
-      Sample dataset: quotes, financials and filing excerpts are illustrative, not live. Forecasts and risk are computed by the backend; the committee runs on Gemini's free tier (about one run per minute).
+      Sample dataset: quotes, financials and filing excerpts are illustrative, not live. Forecasts and risk are computed by the backend; the committee runs on Gemini's free tier, which allows a limited number of runs per day.
     </p>
 
     <div id="loadError" role="alert" class="hidden px-4 py-3 border border-bb-down text-bb-down"></div>
@@ -164,7 +165,7 @@
         <h2 class="text-xs font-bold text-bb-amber">RISK SCORECARD <span data-sym></span></h2>
         <span class="text-xs font-bold text-bb-muted" id="hitlStatus"></span>
       </div>
-      <dl class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-bb-line border-b border-bb-line" id="riskCards"></dl>
+      <dl class="grid grid-cols-2 lg:grid-cols-5 divide-x divide-bb-line border-b border-bb-line" id="riskCards"></dl>
       <div class="px-4 py-3 border-b border-bb-line text-xs" id="riskReasons"></div>
       <div class="p-4 space-y-4" id="pmGateCard"></div>
     </section>
@@ -181,6 +182,7 @@
       ['portfolio_manager_gate', 'PM sign-off'],
     ];
     const TABS = ['screener', 'montecarlo', 'secrag', 'debate', 'riskdesk'];
+    const BACKTEST_NOTE = 'Backtest, 2019 to 2026 held out: forecasts ranked stocks slightly better than chance, but BUY calls were right no more often than "stocks usually rise". Treat the call as sizing guidance, not a prediction.';
     const state = { tickers: [], active: null, detail: {}, run: null, running: false, chart: null, tab: 'screener' };
 
     const $ = (id) => document.getElementById(id);
@@ -374,7 +376,9 @@
     function renderRisk() {
       const d = state.detail[state.active];
       const r = d.risk;
+      const callTone = { buy: 'text-bb-up', sell: 'text-bb-down', hold: '' }[d.quant_call];
       $('riskCards').innerHTML =
+        stat('Quant call', d.quant_call.toUpperCase(), 'Before the committee runs', callTone) +
         stat('Value at risk (95%)', pct(r.var_95_pct), '30-day horizon') +
         stat('Expected shortfall', pct(r.cvar_95_pct), 'Average loss beyond VaR') +
         stat('Recommended size', pct(r.recommended_allocation_pct), `${Math.round(d.kelly_fraction * 100)}% of Kelly (raw ${pct(r.raw_kelly_pct)})`, 'text-bb-amber') +
@@ -382,6 +386,7 @@
       $('riskReasons').innerHTML = r.requires_pm_approval
         ? `<p class="font-bold text-bb-amber mb-1">Portfolio manager sign-off required:</p><ul class="list-disc ml-5 space-y-0.5 text-bb-muted">${r.risk_reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
         : '<p class="text-bb-up font-bold">Within automatic limits. Orders commit without sign-off.</p>';
+      $('riskReasons').insertAdjacentHTML('beforeend', `<p class="text-bb-muted mt-2">${BACKTEST_NOTE}</p>`);
     }
 
     // ---------- committee run ----------
