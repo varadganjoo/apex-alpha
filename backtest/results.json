@@ -1,0 +1,228 @@
+{
+  "config": {
+    "universe": [
+      "AAPL",
+      "MSFT",
+      "NVDA",
+      "TSLA",
+      "AMZN",
+      "GOOGL",
+      "META",
+      "JPM",
+      "JNJ",
+      "PG",
+      "KO",
+      "PEP",
+      "WMT",
+      "XOM",
+      "CVX",
+      "HD",
+      "UNH",
+      "V",
+      "MA",
+      "DIS",
+      "INTC",
+      "CSCO",
+      "ORCL",
+      "IBM",
+      "MRK",
+      "PFE",
+      "VZ",
+      "BA",
+      "CAT",
+      "MCD",
+      "NKE",
+      "COST"
+    ],
+    "start": "2009-12-01",
+    "end": "2026-09-01",
+    "split": "2019-01-01",
+    "horizon_trading_days": 30,
+    "paths": 3000,
+    "sell_below_p_profit": 0.45,
+    "tilt_grid": [
+      -1.0,
+      -0.5,
+      -0.25,
+      0.0,
+      0.25,
+      0.5,
+      1.0
+    ],
+    "tilt_in_sample_ic": {
+      "-1.0": 0.0778,
+      "-0.5": 0.0517,
+      "-0.25": 0.0212,
+      "0.0": -0.0365,
+      "0.25": -0.0659,
+      "0.5": -0.072,
+      "1.0": -0.0769
+    },
+    "chosen_tilt": -1.0,
+    "momentum_center": -0.0458,
+    "risk_free": 0.045,
+    "equity_risk_premium": 0.055
+  },
+  "models": {
+    "shipped: 0.12/beta drift, uncompensated jumps": {
+      "in_sample_2011_2018": {
+        "n_calls": 2151,
+        "share": {
+          "BUY": 0.594,
+          "HOLD": 0.392,
+          "SELL": 0.014
+        },
+        "base_rate_up": 0.627,
+        "buy_hit_rate": 0.625,
+        "sell_hit_rate": 0.355,
+        "avg_fwd_return": {
+          "BUY": 0.019151948052700016,
+          "HOLD": 0.025590414181052762,
+          "SELL": 0.04896993360332715
+        },
+        "rank_ic": -0.0449,
+        "strategy_cagr": 0.0821,
+        "equal_weight_cagr": 0.3017
+      },
+      "out_of_sample_2019_on": {
+        "n_calls": 2017,
+        "share": {
+          "BUY": 0.579,
+          "HOLD": 0.357,
+          "SELL": 0.063
+        },
+        "base_rate_up": 0.605,
+        "buy_hit_rate": 0.59,
+        "sell_hit_rate": 0.391,
+        "avg_fwd_return": {
+          "BUY": 0.012664434492511948,
+          "HOLD": 0.0339153303974771,
+          "SELL": 0.05851731692899326
+        },
+        "rank_ic": -0.1174,
+        "strategy_cagr": 0.0298,
+        "equal_weight_cagr": 0.261
+      }
+    },
+    "0.12/beta drift, fixed jumps": {
+      "in_sample_2011_2018": {
+        "n_calls": 2151,
+        "share": {
+          "BUY": 0.996,
+          "HOLD": 0.004,
+          "SELL": 0.0
+        },
+        "base_rate_up": 0.627,
+        "buy_hit_rate": 0.627,
+        "sell_hit_rate": null,
+        "avg_fwd_return": {
+          "BUY": 0.022077015668502682,
+          "HOLD": 0.02959752275341139,
+          "SELL": null
+        },
+        "rank_ic": -0.0517,
+        "strategy_cagr": 0.2767,
+        "equal_weight_cagr": 0.3017
+      },
+      "out_of_sample_2019_on": {
+        "n_calls": 2017,
+        "share": {
+          "BUY": 0.983,
+          "HOLD": 0.012,
+          "SELL": 0.004
+        },
+        "base_rate_up": 0.605,
+        "buy_hit_rate": 0.603,
+        "sell_hit_rate": 0.222,
+        "avg_fwd_return": {
+          "BUY": 0.02157313757384493,
+          "HOLD": 0.1196099218481766,
+          "SELL": 0.10727215728968571
+        },
+        "rank_ic": -0.1138,
+        "strategy_cagr": 0.2134,
+        "equal_weight_cagr": 0.261
+      }
+    },
+    "CAPM drift, fixed jumps": {
+      "in_sample_2011_2018": {
+        "n_calls": 2151,
+        "share": {
+          "BUY": 1.0,
+          "HOLD": 0.0,
+          "SELL": 0.0
+        },
+        "base_rate_up": 0.627,
+        "buy_hit_rate": 0.627,
+        "sell_hit_rate": null,
+        "avg_fwd_return": {
+          "BUY": 0.02195031912396925,
+          "HOLD": 0.35463864309465487,
+          "SELL": null
+        },
+        "rank_ic": -0.056,
+        "strategy_cagr": 0.2833,
+        "equal_weight_cagr": 0.3017
+      },
+      "out_of_sample_2019_on": {
+        "n_calls": 2017,
+        "share": {
+          "BUY": 0.999,
+          "HOLD": 0.001,
+          "SELL": 0.0
+        },
+        "base_rate_up": 0.605,
+        "buy_hit_rate": 0.605,
+        "sell_hit_rate": 0.0,
+        "avg_fwd_return": {
+          "BUY": 0.02290956865252147,
+          "HOLD": 0.040438937514138795,
+          "SELL": 0.5144801295395636
+        },
+        "rank_ic": -0.0689,
+        "strategy_cagr": 0.238,
+        "equal_weight_cagr": 0.261
+      }
+    },
+    "CAPM + 52w-high tilt -1.0, fixed jumps": {
+      "in_sample_2011_2018": {
+        "n_calls": 2151,
+        "share": {
+          "BUY": 1.0,
+          "HOLD": 0.0,
+          "SELL": 0.0
+        },
+        "base_rate_up": 0.627,
+        "buy_hit_rate": 0.627,
+        "sell_hit_rate": null,
+        "avg_fwd_return": {
+          "BUY": 0.02208669167506525,
+          "HOLD": 0.061437658238254755,
+          "SELL": null
+        },
+        "rank_ic": 0.0703,
+        "strategy_cagr": 0.298,
+        "equal_weight_cagr": 0.3017
+      },
+      "out_of_sample_2019_on": {
+        "n_calls": 2017,
+        "share": {
+          "BUY": 0.996,
+          "HOLD": 0.003,
+          "SELL": 0.001
+        },
+        "base_rate_up": 0.605,
+        "buy_hit_rate": 0.605,
+        "sell_hit_rate": 0.0,
+        "avg_fwd_return": {
+          "BUY": 0.02284530616713981,
+          "HOLD": -0.009406954392470301,
+          "SELL": 0.46385158393831705
+        },
+        "rank_ic": 0.0706,
+        "strategy_cagr": 0.2198,
+        "equal_weight_cagr": 0.261
+      }
+    }
+  }
+}

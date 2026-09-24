@@ -94,18 +94,24 @@ def stage_order_proposal_node(state: Dict[str, Any]) -> Dict[str, Any]:
     total_portfolio_usd = 1000000.0  # $1,000,000 reference institutional portfolio
     target_capital = round(total_portfolio_usd * (risk.recommended_allocation_pct / 100.0), 2)
 
+    quant = RiskGuardEngine.quant_call(h30.probability_of_profit_pct, risk.recommended_allocation_pct)
+    # The committee may veto a quant BUY but never creates one. The veto is not covered by the backtest.
+    action = OrderAction.HOLD if quant == OrderAction.BUY and "bearish" in synthesis.stance.value else quant
+
     proposal = OrderProposal(
         order_id=f"ORD-{quote.symbol}-001",
         symbol=quote.symbol,
-        # A bullish committee cannot override the sizer: zero Kelly allocation means there is nothing to buy.
-        action=OrderAction.BUY if "bullish" in synthesis.stance.value and risk.recommended_allocation_pct > 0 else OrderAction.HOLD,
+        action=action,
         target_allocation_pct=risk.recommended_allocation_pct,
         estimated_capital_usd=target_capital,
         suggested_entry_price=quote.price,
         stop_loss_price=stop_loss,
         take_profit_price=take_profit,
         risk_reward_ratio=risk_reward,
-        rationale=f"Quantitative Kelly sizing ({risk.recommended_allocation_pct}%) with R:R ratio of {risk_reward}:1.",
+        rationale=(
+            f"Quant call {quant.value.upper()} (30-day probability of profit {h30.probability_of_profit_pct}%, "
+            f"Kelly size {risk.recommended_allocation_pct}%); committee stance {synthesis.stance.value}; R:R {risk_reward}:1."
+        ),
     )
     state["proposal"] = proposal
     return state

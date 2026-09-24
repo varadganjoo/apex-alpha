@@ -14,6 +14,26 @@ class QuantitativeForecaster:
     HORIZONS = [5, 30, 90]  # 5-day (tactical), 30-day (monthly), 90-day (quarterly)
     NUM_PATHS = 10000
 
+    RISK_FREE_RATE = 0.045       # matches RiskGuardEngine's Sharpe calculation
+    EQUITY_RISK_PREMIUM = 0.055  # long-run US equity premium used for CAPM expected returns
+
+    # Merton jumps: rare earnings/macro shocks, about four a year.
+    JUMPS_PER_YEAR = 4.0
+    JUMP_MEAN = -0.01
+    JUMP_STD = 0.05
+
+    # 52-week-high tilt on top of CAPM, chosen on 2011-2018 by backtest/run_backtest.py. Negative = short-term
+    # reversal: stocks far below their high get a higher expected return. Held-out rank IC +0.07 (backtest/RESULTS.md).
+    # ponytail: -1.0 is the edge of the searched grid; widening it would need a fresh holdout period.
+    HIGH_52W_TILT = -1.0
+    HIGH_52W_CENTER = -0.046  # in-sample median of price / 52-week high - 1
+
+    @classmethod
+    def estimate_drift(cls, quote: MarketQuote) -> float:
+        """Expected annual return: CAPM (risk-free + beta x equity premium), plus the backtested 52-week-high tilt."""
+        gap = quote.price / quote.week_52_high - 1 if quote.week_52_high > 0 else cls.HIGH_52W_CENTER
+        return cls.RISK_FREE_RATE + quote.beta * cls.EQUITY_RISK_PREMIUM + cls.HIGH_52W_TILT * (gap - cls.HIGH_52W_CENTER)
+
     @classmethod
     def simulate_gbm_paths(
         cls,
@@ -24,37 +44,31 @@ class QuantitativeForecaster:
         num_paths: int = NUM_PATHS,
         random_seed: Optional[int] = 42,
     ) -> np.ndarray:
-        """Simulates price trajectories using Geometric Brownian Motion with Merton Jump Diffusion."""
-        if random_seed is not None:
-            np.random.seed(random_seed)
+        """Simulates terminal prices under Merton jump diffusion.
 
-        dt = 1.0 / 252.0  # Daily time step (252 trading days per year)
-        num_steps = horizon_days
+        `annualized_drift` is the expected (arithmetic) return and `annualized_volatility` the total
+        volatility, jumps included. The drift is jump-compensated and the jump variance is carved out of
+        the diffusion, so the simulated paths match both inputs instead of adding a hidden drag.
+        """
+        rng = np.random.default_rng(random_seed)
+        dt = 1.0 / 252.0
 
-        # Jump diffusion parameters (rare earnings/macro jump shocks)
-        lambda_jumps = 0.05  # Average 0.05 jumps per day
-        jump_mean = -0.01  # Slight negative asymmetry
-        jump_std = 0.04
+        lam = cls.JUMPS_PER_YEAR
+        kappa = math.exp(cls.JUMP_MEAN + 0.5 * cls.JUMP_STD**2) - 1  # expected relative jump size
+        jump_var = lam * (cls.JUMP_MEAN**2 + cls.JUMP_STD**2)
+        # ponytail: floor keeps at least half the volatility in the diffusion for very quiet stocks.
+        diffusion_var = max(annualized_volatility**2 - jump_var, 0.25 * annualized_volatility**2)
+        step_drift = (annualized_drift - lam * kappa - 0.5 * diffusion_var) * dt
 
-        # Pre-allocate path array
-        prices = np.zeros((num_paths, num_steps + 1))
-        prices[:, 0] = current_price
-
-        # Standard normal random variates
-        drift = (annualized_drift - 0.5 * (annualized_volatility ** 2)) * dt
-        vol_step = annualized_volatility * math.sqrt(dt)
-
-        for step in range(1, num_steps + 1):
-            z = np.random.normal(0, 1, num_paths)
-            # Poisson jump arrivals
-            jumps_occurred = np.random.poisson(lambda_jumps, num_paths)
-            jump_magnitudes = np.random.normal(jump_mean, jump_std, num_paths) * jumps_occurred
-
-            # Log return update
-            log_returns = drift + vol_step * z + jump_magnitudes
-            prices[:, step] = prices[:, step - 1] * np.exp(log_returns)
-
-        return prices[:, -1]  # Return terminal prices
+        log_returns = np.zeros(num_paths)
+        for _ in range(horizon_days):
+            jumps = rng.poisson(lam * dt, num_paths)
+            log_returns += (
+                step_drift
+                + math.sqrt(diffusion_var * dt) * rng.normal(0, 1, num_paths)
+                + rng.normal(cls.JUMP_MEAN, cls.JUMP_STD, num_paths) * jumps
+            )
+        return current_price * np.exp(log_returns)
 
     @classmethod
     def compute_forecast(
@@ -65,8 +79,7 @@ class QuantitativeForecaster:
         random_seed: Optional[int] = 42,
     ) -> MonteCarloResult:
         """Generates multi-horizon probabilistic forecasts for a given asset."""
-        # Baseline drift estimated from forward P/E, revenue growth, or historical return
-        drift = annualized_drift if annualized_drift is not None else max(-0.15, min(0.35, 0.12 * (1.0 / max(0.5, quote.beta))))
+        drift = annualized_drift if annualized_drift is not None else cls.estimate_drift(quote)
         vol = max(0.15, quote.annualized_volatility)
 
         horizons_dict: Dict[int, QuantileForecast] = {}

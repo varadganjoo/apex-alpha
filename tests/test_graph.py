@@ -49,9 +49,21 @@ def test_graph_resumes_with_pm_approval(graph):
     assert "12.5%" in result.get("execution_result", "")
 
 
-@pytest.mark.parametrize("allocation, expected_action", [(0.0, "hold"), (6.5, "buy")])
-def test_bullish_committee_only_buys_when_sizer_allocates(allocation, expected_action):
-    """The Kelly sizer, not the LLM stance, decides whether a bullish view becomes a BUY."""
+@pytest.mark.parametrize(
+    "p_profit, allocation, expected",
+    [(55.0, 6.5, "buy"), (48.0, 0.0, "hold"), (40.0, 0.0, "sell"), (40.0, 2.0, "buy")],
+)
+def test_quant_call_rule(p_profit, allocation, expected):
+    from app.risk_guard import RiskGuardEngine
+
+    assert RiskGuardEngine.quant_call(p_profit, allocation).value == expected
+
+
+@pytest.mark.parametrize(
+    "allocation, stance, expected_action",
+    [(6.5, "bullish", "buy"), (6.5, "neutral", "buy"), (6.5, "bearish", "hold"), (0.0, "strong_bullish", "hold")],
+)
+def test_committee_can_veto_a_buy_but_not_create_one(allocation, stance, expected_action):
     from app.graph import stage_order_proposal_node
     from app.quant_engine import QuantitativeForecaster
     from app.risk_guard import RiskGuardEngine
@@ -60,11 +72,13 @@ def test_bullish_committee_only_buys_when_sizer_allocates(allocation, expected_a
 
     quote = SECFilingRAG.get_quote("NVDA")
     forecast = QuantitativeForecaster.compute_forecast(quote=quote)
+    h30 = forecast.horizons[30].model_copy(update={"probability_of_profit_pct": 50.0})
+    forecast = forecast.model_copy(update={"horizons": {**forecast.horizons, 30: h30}})
     risk = RiskGuardEngine.evaluate_risk(quote=quote, forecast=forecast).model_copy(
         update={"recommended_allocation_pct": allocation}
     )
     synthesis = ExecutiveSynthesis(
-        symbol="NVDA", stance=MarketStance.BULLISH, confidence_score=0.8, expected_annualized_return_pct=7.0,
+        symbol="NVDA", stance=MarketStance(stance), confidence_score=0.8, expected_annualized_return_pct=7.0,
         key_catalysts=[], key_downside_risks=[], synthesis_narrative="",
     )
     state = stage_order_proposal_node({"quote": quote, "risk": risk, "synthesis": synthesis, "monte_carlo": forecast})

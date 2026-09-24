@@ -4,7 +4,7 @@ Enforces hard mathematical risk invariants: Value-at-Risk (VaR 95%), CVaR, and a
 
 import math
 from typing import List
-from app.schemas import MarketQuote, MonteCarloResult, RiskMetrics
+from app.schemas import MarketQuote, MonteCarloResult, OrderAction, RiskMetrics
 
 
 class RiskGuardEngine:
@@ -13,6 +13,17 @@ class RiskGuardEngine:
     MAX_ALLOCATION_CAP_PCT = 15.0  # Hard ceiling: No single position may exceed 15% of portfolio
     MAX_UNMEDIATED_VAR_PCT = 8.0   # If 30-day VaR > 8%, requires Portfolio Manager sign-off
     KELLY_SAFETY_FRACTION = 0.33   # 1/3rd fractional Kelly to protect against model uncertainty
+    SELL_BELOW_P_PROFIT = 45.0     # 30-day probability of profit (%) under which the quant call is SELL
+
+    @classmethod
+    def quant_call(cls, probability_of_profit_pct: float, recommended_allocation_pct: float) -> OrderAction:
+        """The rule scored by backtest/run_backtest.py: BUY when Kelly sizes a position, SELL when the
+        30-day probability of profit is below the threshold, otherwise HOLD."""
+        if recommended_allocation_pct > 0:
+            return OrderAction.BUY
+        if probability_of_profit_pct < cls.SELL_BELOW_P_PROFIT:
+            return OrderAction.SELL
+        return OrderAction.HOLD
 
     @classmethod
     def evaluate_risk(cls, quote: MarketQuote, forecast: MonteCarloResult) -> RiskMetrics:

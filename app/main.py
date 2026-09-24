@@ -146,6 +146,9 @@ def get_forecast(symbol: str):
     return {
         "monte_carlo": forecast.model_dump(),
         "risk": risk.model_dump(),
+        "quant_call": RiskGuardEngine.quant_call(
+            forecast.horizons[30].probability_of_profit_pct, risk.recommended_allocation_pct
+        ).value,
         "allocation_cap_pct": RiskGuardEngine.MAX_ALLOCATION_CAP_PCT,
         "kelly_fraction": RiskGuardEngine.KELLY_SAFETY_FRACTION,
     }

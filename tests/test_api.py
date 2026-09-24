@@ -40,6 +40,7 @@ def test_forecast_endpoint_matches_quant_engine():
     assert body["monte_carlo"]["horizons"]["30"]["p50_median"] == expected.horizons[30].p50_median
     assert body["allocation_cap_pct"] == 15.0
     assert body["risk"]["recommended_allocation_pct"] <= 15.0
+    assert body["quant_call"] in {"buy", "hold", "sell"}
 
 
 def test_unknown_ticker_is_404():
