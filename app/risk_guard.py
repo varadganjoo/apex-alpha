@@ -44,8 +44,8 @@ class RiskGuardEngine:
         cvar_95_pct = round(var_95_pct * 1.35, 2)  # Expected shortfall beyond VaR
 
         # 3. Sharpe and Sortino Ratios (Annualized)
-        risk_free_rate = 0.045  # 4.5% US Treasury risk-free rate
-        excess_return = forecast.annualized_drift - risk_free_rate
+        # Same rate the forecast's expected return was built on (live 3-month Treasury when available).
+        excess_return = forecast.annualized_drift - forecast.risk_free_rate
         sharpe_ratio = round(excess_return / max(0.05, forecast.annualized_volatility), 2)
 
         downside_vol = forecast.annualized_volatility * 0.7  # Approximation of semi-deviation

@@ -35,7 +35,7 @@ where $k = \mathbb{E}[Y - 1] = \exp(\mu_J + \frac{1}{2}\sigma_J^2) - 1$ and $Z \
 
 $$\mu = r_f + \beta\,\text{ERP} + \theta\,(g - \bar g)$$
 
-CAPM with $r_f = 4.5\%$ and an equity risk premium of $5.5\%$, plus an optional tilt on $g$, the distance from the 52-week high ($g = S/\max_{252} S - 1$, centered on its in-sample median $\bar g$). The tilt $\theta$ is chosen on 2011-2018 data only; see [backtest/RESULTS.md](../backtest/RESULTS.md).
+CAPM with $r_f$ the latest 3-month Treasury yield (U.S. Treasury daily par yield curve; $4.5\%$ if unavailable, and a constant $4.5\%$ in the backtest) and an equity risk premium of $5.5\%$, plus an optional tilt on $g$, the distance from the 52-week high ($g = S/\max_{252} S - 1$, centered on its in-sample median $\bar g$). The tilt $\theta$ is chosen on 2011-2018 data only; see [backtest/RESULTS.md](../backtest/RESULTS.md).
 
 ### 1.3 Monte Carlo Quantile Cones
 

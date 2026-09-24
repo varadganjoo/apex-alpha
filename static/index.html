@@ -334,7 +334,7 @@
       const mc = state.detail[state.active].monte_carlo;
       const h30 = mc.horizons['30'];
       const price = mc.current_price;
-      $('mcParams').innerHTML = `<span class="mr-4">${mc.simulated_paths.toLocaleString()} paths</span><span class="mr-4">drift ${pct(mc.annualized_drift * 100)}</span><span>vol ${pct(mc.annualized_volatility * 100)}</span>`;
+      $('mcParams').innerHTML = `<span class="mr-4">${mc.simulated_paths.toLocaleString()} paths</span><span class="mr-4">drift ${pct(mc.annualized_drift * 100)}</span><span class="mr-4">vol ${pct(mc.annualized_volatility * 100)}</span><span>risk-free ${pct(mc.risk_free_rate * 100)} (${esc(mc.risk_free_source)})</span>`;
       $('mcProfitProb').innerHTML = `30-day probability of profit <span class="${h30.probability_of_profit_pct >= 50 ? 'text-bb-up' : 'text-bb-down'}">${pct(h30.probability_of_profit_pct)}</span>`;
       const move = (v) => `<span class="text-xs ${tone(v - price)}">${pct((v / price - 1) * 100, true)}</span>`;
       $('mcCards').innerHTML =

@@ -3,6 +3,7 @@
     prices, market cap, P/E   Yahoo Finance via yfinance; Tiingo if TIINGO_API_KEY is set
     fundamentals              SEC EDGAR XBRL company facts
     filing excerpts           SEC EDGAR, latest 10-Q or 10-K primary document
+    risk-free rate            U.S. Treasury daily par yield curve, 3-month
 
 SEC requires a User-Agent with a contact email (SEC_USER_AGENT). Results are cached in-process; the API also sets
 CDN cache headers so serverless instances rarely refetch. Callers fall back to the sample dataset on any failure.
@@ -11,8 +12,10 @@ Set APEX_DATA=sample to stay offline (tests do).
 
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import gzip
+import io
 import json
 import logging
 import math
@@ -188,6 +191,35 @@ def live_quote_fields(symbol: str) -> dict[str, Any]:
         except Exception as exc:
             logger.warning(f"SEC valuation inputs unavailable for {symbol}: {exc}")
     return fields
+
+
+# ---------------------------------------------------------------- risk-free rate
+
+TREASURY_CSV = (
+    "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/"
+    "{year}/all?type=daily_treasury_yield_curve&field_tdr_date_value={year}&page&_format=csv"
+)
+
+
+def parse_treasury_csv(text: str) -> tuple[float, str] | None:
+    """Latest 3-month yield (as a decimal) and its ISO date from a Treasury yield-curve CSV, or None if empty."""
+    rows = [r for r in csv.DictReader(io.StringIO(text)) if r.get("3 Mo")]
+    if not rows:
+        return None
+    latest = max(rows, key=lambda r: dt.datetime.strptime(r["Date"], "%m/%d/%Y"))
+    return float(latest["3 Mo"]) / 100, dt.datetime.strptime(latest["Date"], "%m/%d/%Y").date().isoformat()
+
+
+@ttl_cache(12 * 3600, failure_seconds=600)
+def treasury_3m_yield() -> tuple[float, str]:
+    """(yield, date) of the latest 3-month Treasury. Early January the current-year file can be empty."""
+    today = dt.date.today()
+    for year in (today.year, today.year - 1):
+        text = _get(TREASURY_CSV.format(year=year), {"User-Agent": "apex-alpha (github.com/varadganjoo/apex-alpha)"})
+        parsed = parse_treasury_csv(text.decode("utf-8-sig"))
+        if parsed:
+            return parsed
+    raise RuntimeError("no Treasury yield rows for this year or last")
 
 
 # ---------------------------------------------------------------- SEC EDGAR

@@ -73,6 +73,8 @@ class MonteCarloResult(BaseModel):
     annualized_drift: float
     annualized_volatility: float
     horizons: Dict[int, QuantileForecast]
+    risk_free_rate: float = 0.045
+    risk_free_source: str = "assumed"  # e.g. "US Treasury 3M, 2026-09-24" 
     generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 

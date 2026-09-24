@@ -5,6 +5,7 @@ Simulates multi-horizon price distributions and calculates exact probabilistic q
 import math
 import numpy as np
 from typing import Dict, List, Optional
+from app import market_data
 from app.schemas import MarketQuote, MonteCarloResult, QuantileForecast
 
 
@@ -14,7 +15,7 @@ class QuantitativeForecaster:
     HORIZONS = [5, 30, 90]  # 5-day (tactical), 30-day (monthly), 90-day (quarterly)
     NUM_PATHS = 10000
 
-    RISK_FREE_RATE = 0.045       # matches RiskGuardEngine's Sharpe calculation
+    RISK_FREE_RATE = 0.045       # fallback when the live Treasury rate is unavailable (and the backtest's constant)
     EQUITY_RISK_PREMIUM = 0.055  # long-run US equity premium used for CAPM expected returns
 
     # Merton jumps: rare earnings/macro shocks, about four a year.
@@ -29,10 +30,22 @@ class QuantitativeForecaster:
     HIGH_52W_CENTER = -0.046  # in-sample median of price / 52-week high - 1
 
     @classmethod
-    def estimate_drift(cls, quote: MarketQuote) -> float:
+    def risk_free_rate(cls) -> tuple[float, str]:
+        """Current 3-month Treasury yield, or the assumed constant when offline or the Treasury feed is down."""
+        if market_data.live_enabled():
+            try:
+                rate, as_of = market_data.treasury_3m_yield()
+                return rate, f"US Treasury 3M, {as_of}"
+            except Exception:
+                pass
+        return cls.RISK_FREE_RATE, "assumed"
+
+    @classmethod
+    def estimate_drift(cls, quote: MarketQuote, risk_free: Optional[float] = None) -> float:
         """Expected annual return: CAPM (risk-free + beta x equity premium), plus the backtested 52-week-high tilt."""
+        rf = cls.risk_free_rate()[0] if risk_free is None else risk_free
         gap = quote.price / quote.week_52_high - 1 if quote.week_52_high > 0 else cls.HIGH_52W_CENTER
-        return cls.RISK_FREE_RATE + quote.beta * cls.EQUITY_RISK_PREMIUM + cls.HIGH_52W_TILT * (gap - cls.HIGH_52W_CENTER)
+        return rf + quote.beta * cls.EQUITY_RISK_PREMIUM + cls.HIGH_52W_TILT * (gap - cls.HIGH_52W_CENTER)
 
     @classmethod
     def simulate_gbm_paths(
@@ -79,7 +92,8 @@ class QuantitativeForecaster:
         random_seed: Optional[int] = 42,
     ) -> MonteCarloResult:
         """Generates multi-horizon probabilistic forecasts for a given asset."""
-        drift = annualized_drift if annualized_drift is not None else cls.estimate_drift(quote)
+        rf, rf_source = cls.risk_free_rate()
+        drift = annualized_drift if annualized_drift is not None else cls.estimate_drift(quote, rf)
         vol = max(0.15, quote.annualized_volatility)
 
         horizons_dict: Dict[int, QuantileForecast] = {}
@@ -117,4 +131,6 @@ class QuantitativeForecaster:
             annualized_drift=round(drift, 4),
             annualized_volatility=round(vol, 4),
             horizons=horizons_dict,
+            risk_free_rate=round(rf, 4),
+            risk_free_source=rf_source,
         )

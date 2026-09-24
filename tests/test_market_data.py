@@ -9,7 +9,10 @@ from app import market_data as md
 from app.sec_rag import SEC_DATABASE, SECFilingRAG
 
 
-CACHED = (md.price_table, md.yahoo_info, md.company_facts, md.submissions, md.sec_fundamentals, md.sec_excerpts)
+CACHED = (
+    md.price_table, md.yahoo_info, md.company_facts, md.submissions, md.sec_fundamentals, md.sec_excerpts,
+    md.treasury_3m_yield,
+)
 
 
 @pytest.fixture
@@ -271,3 +274,49 @@ def test_read_endpoints_send_cdn_cache_headers():
     assert "s-maxage" in client.get("/api/tickers/NVDA/quote").headers["cache-control"]
     stream = client.get("/api/tickers/NVDA/debate/stream")
     assert "s-maxage" not in stream.headers.get("cache-control", "")
+
+
+# ---------------------------------------------------------------- risk-free rate
+
+TREASURY = '''\ufeffDate,"1 Mo","2 Mo","3 Mo","6 Mo"
+09/23/2026,3.99,4.10,4.19,4.31
+09/24/2026,4.01,4.18,4.24,4.34
+09/22/2026,3.97,4.09,4.16,4.26
+'''
+
+
+def test_parse_treasury_csv_takes_the_latest_date():
+    assert md.parse_treasury_csv(TREASURY.lstrip("\ufeff")) == (pytest.approx(0.0424), "2026-09-24")
+    assert md.parse_treasury_csv('Date,"3 Mo"\n') is None
+
+
+def test_treasury_falls_back_to_last_year_file_in_january(live, monkeypatch):
+    files = {md.dt.date.today().year: 'Date,"3 Mo"\n', md.dt.date.today().year - 1: TREASURY}
+    monkeypatch.setattr(md, "_get", lambda url, headers: files[int(url.split("/")[-2])].encode("utf-8"))
+    assert md.treasury_3m_yield() == (pytest.approx(0.0424), "2026-09-24")
+
+
+def test_forecast_and_sharpe_use_the_live_risk_free_rate(live, monkeypatch):
+    from app.quant_engine import QuantitativeForecaster as QF
+    from app.risk_guard import RiskGuardEngine
+
+    monkeypatch.setattr(md, "treasury_3m_yield", lambda: (0.03, "2026-09-24"))
+    quote = SEC_DATABASE["NVDA"]["quote"]
+    forecast = QF.compute_forecast(quote=quote)
+    assert (forecast.risk_free_rate, forecast.risk_free_source) == (0.03, "US Treasury 3M, 2026-09-24")
+    assert forecast.annualized_drift == pytest.approx(QF.estimate_drift(quote, 0.03), abs=1e-4)
+    assert QF.estimate_drift(quote, 0.05) - QF.estimate_drift(quote, 0.03) == pytest.approx(0.02)
+
+    risk = RiskGuardEngine.evaluate_risk(quote=quote, forecast=forecast)
+    expected = round((forecast.annualized_drift - 0.03) / max(0.05, forecast.annualized_volatility), 2)
+    assert risk.sharpe_ratio == expected
+
+
+def test_risk_free_rate_falls_back_to_the_assumption(live, monkeypatch):
+    from app.quant_engine import QuantitativeForecaster as QF
+
+    def down():
+        raise RuntimeError("treasury down")
+
+    monkeypatch.setattr(md, "treasury_3m_yield", down)
+    assert QF.risk_free_rate() == (QF.RISK_FREE_RATE, "assumed")

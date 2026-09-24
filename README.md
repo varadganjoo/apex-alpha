@@ -18,6 +18,7 @@
 | Market cap, trailing and forward P/E | Yahoo Finance; market cap and P/E fall back to SEC shares outstanding and trailing net income | 24 h | shown as n/a |
 | Revenue, margins, free cash flow, debt/equity | SEC EDGAR XBRL company facts (latest quarter, derived from year-to-date filings where needed) | 6 h | illustrative sample |
 | Filing excerpts the committee cites | SEC EDGAR, latest 10-Q or 10-K (MD&A and risk factors) | 6 h | illustrative sample |
+| Risk-free rate (expected returns, Sharpe) | U.S. Treasury daily par yield curve, 3-month | 12 h | 4.5% assumption |
 
 Read endpoints also carry CDN cache headers, so serverless instances rarely refetch. Every response and the UI say which source each number came from.
 
