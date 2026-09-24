@@ -8,10 +8,18 @@
 
 > **Apex-Alpha** is a quantitative research terminal. A **Merton jump-diffusion Monte Carlo** engine produces 5, 30 and 90-day price quantiles; a **deterministic risk engine** sizes positions with fractional Kelly and VaR limits; an **adversarial Bull vs. Bear LLM committee** argues the case from filing excerpts; and a **LangGraph `interrupt()`** holds every staged order for a portfolio manager's sign-off.
 
-**Live demo:** https://apex-alpha-tan.vercel.app (sample data; the committee runs on Gemini's free tier, so it is limited to a small number of runs per day)
+**Live demo:** https://apex-alpha-tan.vercel.app (NVDA, AAPL, TSLA, MSFT with live prices and SEC filings; the committee runs on free-tier models, so runs per day are limited)
 
-> [!NOTE]
-> **Sample dataset.** Quotes, financials and filing excerpts for NVDA, AAPL, TSLA and MSFT are illustrative benchmark data, not live market data. The backtest below uses real historical prices.
+## Data sources
+
+| Data | Source | Cached | If unavailable |
+| :--- | :--- | :--- | :--- |
+| Prices, beta, volatility, 52-week range | Yahoo Finance via `yfinance` (about 15 months of daily bars; beta and volatility computed exactly as in the backtest) | 15 min | Tiingo if `TIINGO_API_KEY` is set, then the illustrative sample |
+| Market cap, trailing and forward P/E | Yahoo Finance; market cap and P/E fall back to SEC shares outstanding and trailing net income | 24 h | shown as n/a |
+| Revenue, margins, free cash flow, debt/equity | SEC EDGAR XBRL company facts (latest quarter, derived from year-to-date filings where needed) | 6 h | illustrative sample |
+| Filing excerpts the committee cites | SEC EDGAR, latest 10-Q or 10-K (MD&A and risk factors) | 6 h | illustrative sample |
+
+Read endpoints also carry CDN cache headers, so serverless instances rarely refetch. Every response and the UI say which source each number came from.
 
 ---
 
@@ -39,8 +47,8 @@ The LLM committee is not part of the backtest: it cannot be replayed without loo
 ```mermaid
 flowchart TD
     subgraph DataIngestion["1. Data & Filings"]
-        Quotes["Sample Market Quotes<br/>(price, beta, volatility, 52-week range)"]
-        SEC["Sample Filing Excerpts & Financials"]
+        Quotes["Live Quotes<br/>(Yahoo Finance: price, beta, volatility, 52-week range)"]
+        SEC["SEC EDGAR<br/>(XBRL fundamentals, 10-Q / 10-K excerpts)"]
     end
 
     subgraph QuantEngine["2. Quantitative Forecasting & Risk"]
@@ -49,7 +57,7 @@ flowchart TD
         Risk["Deterministic Risk Guard<br/>(VaR, CVaR, fractional Kelly, 15% cap)"]
     end
 
-    subgraph DebateEngine["3. Adversarial LLM Committee (Gemini 3.6 / 3.7 / 3.8 fallback)"]
+    subgraph DebateEngine["3. Adversarial LLM Committee (Gemini 3.6 / 3.7 / 3.8, then Groq)"]
         Bull["Bull Analyst"]
         Bear["Bear Risk Officer"]
         Synth["CIO Synthesis"]
@@ -76,11 +84,17 @@ The UI streams each graph node as it finishes (`POST /api/tickers/{symbol}/analy
 
 ## Screenshots
 
-![Screener](docs/images/01_screener.png)
+Captured from the live demo.
 
-![Monte Carlo](docs/images/02_monte_carlo.png)
+![Screener with live prices](docs/images/01_screener.png)
 
-![Risk desk](docs/images/03_risk_desk.png)
+![Monte Carlo forecast](docs/images/02_monte_carlo.png)
+
+![Excerpts from the latest SEC filing](docs/images/03_filings.png)
+
+![Committee run: every citation checked against the filing](docs/images/04_committee.png)
+
+![Order staged for portfolio manager sign-off](docs/images/05_risk_desk.png)
 
 ---
 
@@ -88,11 +102,19 @@ The UI streams each graph node as it finishes (`POST /api/tickers/{symbol}/analy
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env          # add GEMINI_API_KEY
+cp .env.example .env          # add GEMINI_API_KEY, GROQ_API_KEY, SEC_USER_AGENT
 uvicorn app.main:app --port 8030 --reload
 ```
 
-Open http://127.0.0.1:8030. `GEMINI_MODELS` sets the fallback order (default `gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash`); each model has its own free-tier quota.
+Open http://127.0.0.1:8030.
+
+| Variable | Purpose |
+| :--- | :--- |
+| `GEMINI_API_KEY` | Committee models. `GEMINI_MODELS` sets the order (default `gemini-3.6-flash,gemini-3.7-flash,gemini-3.8-flash`); each has its own free-tier quota. |
+| `GROQ_API_KEY` | Backup when every Gemini model is out of quota or overloaded (`GROQ_MODEL`, default `openai/gpt-oss-120b`). |
+| `SEC_USER_AGENT` | Required by SEC EDGAR: a name and contact email, e.g. `Apex-Alpha demo you@example.com`. No API key needed. |
+| `TIINGO_API_KEY` | Optional second price source (free key at tiingo.com). |
+| `APEX_DATA=sample` | Use the offline sample dataset only (the test suite does this). |
 
 MCP server:
 
@@ -115,7 +137,7 @@ python -m backtest.run_backtest && python -m backtest.report
 python -m pytest tests/ -v
 ```
 
-Covers Monte Carlo quantiles, the risk engine and order rule, the LangGraph interrupt/resume lifecycle, the HTTP API (streaming, sign-off validation, error handling), the MCP server, and the Gemini fallback chain. CI runs the suite on every push.
+Covers Monte Carlo quantiles, the risk engine and order rule, the LangGraph interrupt/resume lifecycle, the HTTP API (streaming, sign-off validation, error handling, cache headers), live-data parsing (SEC quarter derivation, filing excerpts, fallbacks), the MCP server, and the Gemini and Groq fallback chain. Tests run offline against the sample dataset; CI runs them on every push.
 
 ---
 

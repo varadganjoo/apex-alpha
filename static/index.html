@@ -45,7 +45,7 @@
 
   <!-- Quote strip (static; sample prices) -->
   <div class="border-b border-bb-line text-[11px] px-4 md:px-6 py-1.5 flex items-center gap-6 text-bb-muted overflow-x-auto whitespace-nowrap">
-    <span class="font-bold text-bb-amber">SAMPLE PRICES</span>
+    <span class="font-bold text-bb-amber" id="stripLabel">PRICES</span>
     <div class="flex gap-6" id="quoteStrip"></div>
     <span class="ml-auto hidden md:inline">NOT INVESTMENT ADVICE</span>
   </div>
@@ -75,7 +75,7 @@
   <main class="flex-1 w-full max-w-[1400px] mx-auto px-4 md:px-6 py-6 space-y-6">
     <p class="text-bb-muted text-xs max-w-[110ch]">
       <i class="ph ph-info text-bb-amber align-[-2px]"></i>
-      Sample dataset: quotes, financials and filing excerpts are illustrative, not live. Forecasts and risk are computed by the backend; the committee runs on Gemini's free tier, which allows a limited number of runs per day.
+      <span id="dataNote">Loading market data.</span>
     </p>
 
     <div id="loadError" role="alert" class="hidden px-4 py-3 border border-bb-down text-bb-down"></div>
@@ -116,7 +116,7 @@
     <section id="page_secrag" class="hidden border border-bb-line">
       <div class="px-4 py-2.5 border-b border-bb-line flex flex-wrap gap-2 justify-between">
         <h2 class="text-xs font-bold text-bb-amber">FILING EXCERPTS <span data-sym></span></h2>
-        <span class="text-xs text-bb-muted">Committee citations are checked word for word against these</span>
+        <span class="text-xs text-bb-muted" id="filingSource"></span>
       </div>
       <div class="divide-y divide-bb-line" id="secExcerptsContainer"></div>
     </section>
@@ -176,8 +176,8 @@
       ['ingest_market_data', 'Ingest'],
       ['run_quantitative_forecast', 'Monte Carlo'],
       ['evaluate_risk_guardrails', 'Risk guard'],
-      ['adversarial_debate', 'Bull vs bear (Gemini)'],
-      ['executive_synthesis', 'CIO (Gemini)'],
+      ['adversarial_debate', 'Bull vs bear (LLM)'],
+      ['executive_synthesis', 'CIO (LLM)'],
       ['stage_order_proposal', 'Stage order'],
       ['portfolio_manager_gate', 'PM sign-off'],
     ];
@@ -189,7 +189,9 @@
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const money = (n) => '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const pct = (n, signed = false) => (signed && n > 0 ? '+' : '') + Number(n).toFixed(1) + '%';
-    const cap = (b) => (b >= 1000 ? (b / 1000).toFixed(2) + 'T' : b.toFixed(0) + 'B');
+    const cap = (b) => (b == null ? 'n/a' : '$' + (b >= 1000 ? (b / 1000).toFixed(2) + 'T' : b.toFixed(0) + 'B'));
+    const multiple = (x) => (x == null ? 'n/a' : x + 'x');
+    const link = (url, text) => (url ? `<a href="${esc(url)}" target="_blank" rel="noopener" class="underline decoration-dotted hover:text-bb-amber">${esc(text)}</a>` : esc(text));
     const tone = (n) => (n >= 0 ? 'text-bb-up' : 'text-bb-down');
     const stat = (label, value, sub = '', cls = '') => `
       <div class="px-4 py-3">
@@ -252,6 +254,8 @@
         showLoadError('Could not load market data: ' + err.message);
         return;
       }
+      const livePrices = state.tickers.find((t) => t.source !== 'sample');
+      $('stripLabel').textContent = livePrices ? `LIVE PRICES (${livePrices.source.toUpperCase()}, ${livePrices.as_of}, DELAYED)` : 'SAMPLE PRICES';
       $('quoteStrip').innerHTML = state.tickers.map((t) =>
         `<span><span class="text-bb-text font-bold">${esc(t.symbol)}</span> ${money(t.price)} <span class="${tone(t.change_pct)}">${pct(t.change_pct, true)}</span></span>`
       ).join('');
@@ -283,6 +287,7 @@
         return;
       }
       if (state.active !== symbol) return;
+      renderDataNote();
       renderMetrics();
       renderMonteCarlo();
       renderFilings();
@@ -299,14 +304,24 @@
           class="text-left p-4 space-y-1 ${active ? 'bg-bb-surface shadow-[inset_2px_0_0_#F5A524]' : 'hover:bg-bb-surface'}">
           <div class="flex justify-between"><span class="font-bold">${esc(t.symbol)}</span><span class="${tone(t.change_pct)}">${pct(t.change_pct, true)}</span></div>
           <p class="text-xl font-bold ${active ? 'text-bb-amber' : ''}">${money(t.price)}</p>
-          <p class="text-[11px] text-bb-muted flex gap-3"><span>P/E ${t.pe_ratio}x</span><span>Beta ${t.beta}</span><span>Cap $${cap(t.market_cap_b)}</span></p>
+          <p class="text-[11px] text-bb-muted flex gap-3"><span>P/E ${multiple(t.pe_ratio)}</span><span>Beta ${Number(t.beta).toFixed(2)}</span><span>Cap ${cap(t.market_cap_b)}</span></p>
         </button>`;
       }).join('');
     }
 
+    function renderDataNote() {
+      const src = state.detail[state.active].sources;
+      const parts = [];
+      parts.push(src.prices === 'sample' ? 'Prices: illustrative sample (live source unavailable).' : `Prices: ${esc(src.prices)}, latest daily bar ${esc(src.prices_as_of)} (delayed).`);
+      parts.push(src.fundamentals === 'sample' ? 'Fundamentals: illustrative sample.' : `Fundamentals: ${link(src.fundamentals_url, 'SEC EDGAR')}.`);
+      parts.push(src.excerpts === 'sample' ? 'Filing excerpts: illustrative sample.' : 'Filing excerpts: SEC EDGAR.');
+      parts.push('Forecasts and risk are computed from these; the committee runs on free-tier models, so runs per day are limited. Not investment advice.');
+      $('dataNote').innerHTML = parts.join(' ');
+    }
+
     function renderMetrics() {
       const f = state.detail[state.active].financials;
-      $('activeFilingRef').textContent = f.sec_filing_ref;
+      $('activeFilingRef').innerHTML = link(f.filing_url, f.sec_filing_ref);
       $('metricsRow').innerHTML =
         stat('Revenue', '$' + f.revenue_b + 'B') +
         stat('YoY revenue growth', pct(f.revenue_growth_yoy_pct, true), '', tone(f.revenue_growth_yoy_pct)) +
@@ -366,6 +381,10 @@
 
     function renderFilings() {
       const d = state.detail[state.active];
+      const filing = d.sources.excerpts_filing;
+      $('filingSource').innerHTML = filing
+        ? `Verbatim from ${link(filing.url, `SEC Form ${filing.form} filed ${filing.filed}`)}. Committee citations are checked word for word against these.`
+        : 'Illustrative sample excerpts (live SEC filing unavailable). Committee citations are checked word for word against these.';
       $('secExcerptsContainer').innerHTML = Object.entries(d.excerpts).map(([key, text]) => `
         <figure class="px-4 py-4 space-y-1">
           <figcaption class="text-xs font-bold text-bb-amber">${esc(key.replace(/_/g, ' ').toUpperCase())}</figcaption>
