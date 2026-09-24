@@ -47,3 +47,25 @@ def test_graph_resumes_with_pm_approval(graph):
     assert result.get("status") == "executed"
     assert "ORDER COMMITTED" in result.get("execution_result", "")
     assert "12.5%" in result.get("execution_result", "")
+
+
+@pytest.mark.parametrize("allocation, expected_action", [(0.0, "hold"), (6.5, "buy")])
+def test_bullish_committee_only_buys_when_sizer_allocates(allocation, expected_action):
+    """The Kelly sizer, not the LLM stance, decides whether a bullish view becomes a BUY."""
+    from app.graph import stage_order_proposal_node
+    from app.quant_engine import QuantitativeForecaster
+    from app.risk_guard import RiskGuardEngine
+    from app.schemas import ExecutiveSynthesis, MarketStance
+    from app.sec_rag import SECFilingRAG
+
+    quote = SECFilingRAG.get_quote("NVDA")
+    forecast = QuantitativeForecaster.compute_forecast(quote=quote)
+    risk = RiskGuardEngine.evaluate_risk(quote=quote, forecast=forecast).model_copy(
+        update={"recommended_allocation_pct": allocation}
+    )
+    synthesis = ExecutiveSynthesis(
+        symbol="NVDA", stance=MarketStance.BULLISH, confidence_score=0.8, expected_annualized_return_pct=7.0,
+        key_catalysts=[], key_downside_risks=[], synthesis_narrative="",
+    )
+    state = stage_order_proposal_node({"quote": quote, "risk": risk, "synthesis": synthesis, "monte_carlo": forecast})
+    assert state["proposal"].action.value == expected_action

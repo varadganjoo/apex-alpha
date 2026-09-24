@@ -97,7 +97,8 @@ def stage_order_proposal_node(state: Dict[str, Any]) -> Dict[str, Any]:
     proposal = OrderProposal(
         order_id=f"ORD-{quote.symbol}-001",
         symbol=quote.symbol,
-        action=OrderAction.BUY if "bullish" in synthesis.stance.value else OrderAction.HOLD,
+        # A bullish committee cannot override the sizer: zero Kelly allocation means there is nothing to buy.
+        action=OrderAction.BUY if "bullish" in synthesis.stance.value and risk.recommended_allocation_pct > 0 else OrderAction.HOLD,
         target_allocation_pct=risk.recommended_allocation_pct,
         estimated_capital_usd=target_capital,
         suggested_entry_price=quote.price,

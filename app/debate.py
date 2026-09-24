@@ -6,6 +6,7 @@ using Gemini LLM structured outputs and streaming.
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any, Dict, Iterator, Tuple
 from app.llm import generate_structured, stream_text
 from app.schemas import (
@@ -133,7 +134,8 @@ class AdversarialDebateEngine:
         h30 = forecast.horizons.get(30, list(forecast.horizons.values())[0])
 
         prompt = (
-            f"Synthesize the Institutional Investment Committee consensus for {symbol} ({quote.company_name}).\n\n"
+            f"Synthesize the Institutional Investment Committee consensus for {symbol} ({quote.company_name}).\n"
+            f"Today's date: {date.today().isoformat()}\n\n"
             f"Current Market Price: ${quote.price}\n\n"
             f"Quantitative Monte Carlo 30-Day Simulation (10,000 paths):\n"
             f"- Median Expected Target (P50): ${h30.p50_median} ({h30.expected_return_pct:+.1f}%)\n"
@@ -208,7 +210,7 @@ class AdversarialDebateEngine:
         # Step 3: Stream Executive Synthesis
         yield f"event: stage\ndata: {json.dumps({'stage': 'synthesis', 'title': f'CIO Committee Synthesis: {symbol}'})}\n\n"
         synth_prompt = (
-            f"Synthesize the committee decision for {symbol}. "
+            f"Synthesize the committee decision for {symbol}. Today's date: {date.today().isoformat()}. "
             f"Monte Carlo 30-day forecast: Median ${h30.p50_median} ({h30.expected_return_pct:+.1f}%), "
             f"Win Rate: {h30.probability_of_profit_pct:.1f}%. "
             f"Bull arguments: {''.join(bull_chunks)[:400]}... "
