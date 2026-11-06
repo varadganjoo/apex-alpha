@@ -100,8 +100,10 @@ def price_table() -> tuple[pd.DataFrame, pd.DataFrame, str]:
         # Serverless filesystems are read-only outside /tmp.
         yf.set_tz_cache_location(os.path.join(tempfile.gettempdir(), "yfinance"))
         data = yf.download(symbols, period="15mo", auto_adjust=True, progress=False, threads=True)
-        closes, volumes = data["Close"], data["Volume"]
-        if closes.dropna(how="all").shape[0] > LOOKBACK and closes.iloc[-1].notna().all():
+        # Yahoo can append an empty current session after valid completed closes.
+        closes = data["Close"].dropna(how="all")
+        volumes = data["Volume"].reindex(closes.index)
+        if closes.shape[0] > LOOKBACK and closes.iloc[-1].notna().all():
             closes.index = pd.DatetimeIndex(closes.index).tz_localize(None).normalize()
             volumes.index = closes.index
             return closes, volumes, "Yahoo Finance"

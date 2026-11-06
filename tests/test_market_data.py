@@ -37,6 +37,34 @@ def _prices(n=400, seed=0):
 # ---------------------------------------------------------------- risk inputs
 
 
+def test_yahoo_ignores_an_empty_trailing_session(live, monkeypatch):
+    import yfinance as yf
+    stock, market = _prices(n=300)
+    closes = pd.DataFrame({symbol: stock for symbol in md.CIKS} | {md.MARKET: market})
+    volumes = pd.DataFrame(1234, index=closes.index, columns=closes.columns)
+    data = pd.concat({"Close": closes, "Volume": volumes}, axis=1)
+    data.loc[data.index[-1] + pd.offsets.BDay()] = np.nan
+    monkeypatch.setattr(yf, "download", lambda *args, **kwargs: data)
+    result, result_volumes, source = md.price_table()
+    assert source == "Yahoo Finance"
+    assert len(result) == 300
+    assert result.index[-1] == closes.index[-1]
+    assert result_volumes.index.equals(result.index)
+    assert result_volumes.iloc[-1].eq(1234).all()
+
+
+def test_yahoo_still_rejects_a_partially_missing_latest_session(live, monkeypatch):
+    import yfinance as yf
+    stock, market = _prices(n=300)
+    closes = pd.DataFrame({symbol: stock for symbol in md.CIKS} | {md.MARKET: market})
+    closes.loc[closes.index[-1], "NVDA"] = np.nan
+    data = pd.concat({"Close": closes, "Volume": closes * 0 + 1234}, axis=1)
+    monkeypatch.setattr(yf, "download", lambda *args, **kwargs: data)
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="incomplete data"):
+        md.price_table()
+
+
 def test_risk_inputs_match_the_backtest_features(monkeypatch):
     from backtest import run_backtest as bt
 
