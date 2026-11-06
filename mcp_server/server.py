@@ -9,6 +9,7 @@ from mcp.server.mcpserver import MCPServer
 from app.debate import AdversarialDebateEngine
 from app.quant_engine import QuantitativeForecaster
 from app.risk_guard import RiskGuardEngine
+from app.scenarios import compare_scenarios
 from app.sec_rag import SECFilingRAG
 
 mcp = MCPServer("apex-alpha-mcp")
@@ -72,6 +73,17 @@ def evaluate_risk_guardrails(symbol: str) -> Dict[str, Any]:
     forecast = QuantitativeForecaster.compute_forecast(quote=quote)
     risk = RiskGuardEngine.evaluate_risk(quote=quote, forecast=forecast)
     return risk.model_dump()
+
+
+@mcp.tool()
+def run_scenario_analysis(symbol: str) -> Dict[str, Any]:
+    """Compare base, CAPM-only and 1.5x volatility assumptions. Hypothetical, not calibrated predictions."""
+    quote = SECFilingRAG.get_quote(symbol)
+    if not quote:
+        return {"error": f"Symbol '{symbol}' not found."}
+    forecast = QuantitativeForecaster.compute_forecast(quote)
+    return {"symbol": quote.symbol, "price_source": quote.source, "prices_as_of": quote.as_of,
+            "scenarios": compare_scenarios(quote, forecast)}
 
 
 @mcp.tool()

@@ -102,22 +102,22 @@ def test_resume_rejection_cancels_order():
 
 def test_resume_twice_is_rejected():
     thread_id = run_committee("NVDA")[-1][1]["thread_id"]
-    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id}).status_code == 200
-    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id}).status_code == 409
+    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": True}).status_code == 200
+    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": True}).status_code == 409
 
 
 def test_resume_unknown_thread_is_409():
-    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": "NVDA-doesnotexist"}).status_code == 409
+    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": "NVDA-doesnotexist", "approved": True}).status_code == 409
 
 
 def test_resume_rejects_thread_from_other_ticker():
     thread_id = run_committee("NVDA")[-1][1]["thread_id"]
-    assert client.post("/api/tickers/TSLA/resume", json={"thread_id": thread_id}).status_code == 400
+    assert client.post("/api/tickers/TSLA/resume", json={"thread_id": thread_id, "approved": True}).status_code == 400
 
 
 def test_pm_override_cannot_exceed_allocation_cap():
     thread_id = run_committee("NVDA")[-1][1]["thread_id"]
-    response = client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "adjusted_allocation_pct": 40.0})
+    response = client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": True, "adjusted_allocation_pct": 40.0})
     assert response.status_code == 422
 
 
@@ -159,3 +159,53 @@ def test_analyze_json_endpoint_returns_thread_and_interrupt():
     assert body["status"] == "awaiting_pm_approval"
     assert body["thread_id"].startswith("NVDA-")
     assert body["interrupt_details"]["symbol"] == "NVDA"
+
+
+@pytest.mark.parametrize("decision", [{}, {"approved": "yes"}, {"approved": 1},
+                                       {"approved": True, "adjusted_allocation_pct": "NaN"},
+                                       {"approved": True, "adjusted_allocation_pct": "Infinity"},
+                                       {"approved": True, "adjusted_allocation_pct": -1.0}])
+def test_invalid_decision_does_not_consume_pending_review(decision):
+    thread_id = run_committee("NVDA")[-1][1]["thread_id"]
+    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, **decision}).status_code == 422
+    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": False}).status_code == 200
+
+
+def test_pm_cannot_increase_size_even_within_institutional_cap():
+    payload = run_committee("NVDA")[-1][1]
+    thread_id = payload["thread_id"]
+    size = payload["payload"]["proposal"]["target_allocation_pct"]
+    assert size < 15.0
+    response = client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": True, "adjusted_allocation_pct": size + .1})
+    assert response.status_code == 422
+    assert client.post("/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": True, "adjusted_allocation_pct": 0}).status_code == 200
+
+
+def test_concurrent_decisions_consume_the_review_once(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    import app.main as api
+
+    thread_id = run_committee("NVDA")[-1][1]["thread_id"]
+    first_started, second_checked = Event(), Event()
+    original_pending, original_invoke = api._pending_interrupt, api.apex_alpha_graph.invoke
+
+    def pending(config):
+        result = original_pending(config)
+        if first_started.is_set():
+            second_checked.set()
+        return result
+
+    def delayed_invoke(*args, **kwargs):
+        first_started.set()
+        # Give a conflicting request time to reach the pending check if it is unprotected.
+        second_checked.wait(timeout=.5)
+        return original_invoke(*args, **kwargs)
+
+    monkeypatch.setattr(api, "_pending_interrupt", pending)
+    monkeypatch.setattr(api.apex_alpha_graph, "invoke", delayed_invoke)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        approved = pool.submit(client.post, "/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": True})
+        assert first_started.wait(timeout=3)
+        rejected = pool.submit(client.post, "/api/tickers/NVDA/resume", json={"thread_id": thread_id, "approved": False})
+        assert sorted([approved.result(timeout=5).status_code, rejected.result(timeout=5).status_code]) == [200, 409]
