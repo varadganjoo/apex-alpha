@@ -23,7 +23,7 @@
 - [x] Enforce explicit approval and reduction-only sizing at the graph's final decision point and HTTP boundary; verify rejection, invalid inputs and replay.
 - [x] Render and test the risk desk at desktop/mobile widths with keyboard and reduced-motion checks; document assumptions and limits.
 - [x] Run the full suite, dependency and secret checks, review connected callers, record release evidence.
-- [ ] Commit and push the tested branch; open a pull request and inspect CI.
+- [x] Commit and push the tested branch; open [pull request #1](https://github.com/varadganjoo/apex-alpha/pull/1). [GitHub CI](https://github.com/varadganjoo/apex-alpha/actions/runs/42146601040) passed on Python 3.11 and 3.12.
 
 **Review focus:** all-positive simulated returns; tiny tail samples; non-finite overrides; direct graph callers bypassing HTTP validation; sample data mistaken for a live forecast. Each needs a regression or rendered journey.
 

@@ -2,13 +2,14 @@
 
 Verified November 5, 2026 (America/Denver). This is evidence for a tested feature branch, not approval for a production trading deployment.
 
-Source baseline: `3bb3b7e45fe2adcad88e6e6be331eac0c7cb1980`. Scope: the implementation and tests in the commit containing this report. A sorted SHA-256 manifest of `app/**/*.py`, `mcp_server/**/*.py`, `tests/**/*.py` and `static/index.html` was captured outside the repository; manifest SHA-256: `E8D16C863324C00DE3CCEE9BFF27B5816C553AD9D196FA13FD240F4BDDC7EB2F`.
+Source baseline: `3bb3b7e45fe2adcad88e6e6be331eac0c7cb1980`. Tested implementation: `a0a0c7e40c78ca06f832f75f76012206a602095c`; subsequent evidence-only documentation updates do not change that implementation. A sorted SHA-256 manifest of `app/**/*.py`, `mcp_server/**/*.py`, `tests/**/*.py` and `static/index.html` was captured outside the repository; manifest SHA-256: `E8D16C863324C00DE3CCEE9BFF27B5816C553AD9D196FA13FD240F4BDDC7EB2F`.
 
 Environment: Windows, isolated `.venv`, CPython 3.11.0, NumPy 2.4.6, FastAPI 0.162.0, Pydantic 2.14.3, LangGraph 1.2.20, MCP 2.3.0, pytest 9.2.0 and Playwright 1.64.1 with installed Chrome. Tests use sample market data and mocked external model responses. Local networking was enabled because Windows restricted the API test client's event-loop socket otherwise.
 
 | Area | Status | Evidence / limit |
 | --- | --- | --- |
 | Unit, API, graph, MCP, provider failures | PASS | `python -m pytest tests/ -q --tb=short`: **102 passed**. Includes distribution fixtures, seed/rate preservation, invalid and missing decisions, reduction-only sizing, rejection and duplicate/concurrent decisions. |
+| GitHub CI | PASS | [Apex-Alpha CI run 3](https://github.com/varadganjoo/apex-alpha/actions/runs/42146601040): Python 3.11 and 3.12 test jobs succeeded on the tested implementation. |
 | Rendered critical journeys | PASS | `python -m pytest tests/browser_smoke.py -q`: **2 passed**, at 1440x1080 and 390x844. Actual HTML/JS and FastAPI routes with fixture model responses. Keyboard navigation, locally scrolling table, escaped notes, rejected upsize, smaller approval, cancellation; no JavaScript page errors. Screenshots visually inspected. |
 | Reduced motion | PASS | Both browser journeys use reduced-motion preference. Existing CSS/Chart.js reduced-motion handling retained. |
 | Python compilation and diff hygiene | PASS | `python -m compileall -q app mcp_server`; `git diff --check`. No configured type checker or linter exists in the repository; compilation is not a type/lint claim. |
