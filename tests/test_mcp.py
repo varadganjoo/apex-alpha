@@ -9,6 +9,7 @@ from mcp_server.server import (
     get_ticker_resource,
     run_adversarial_debate,
     run_monte_carlo_simulation,
+    run_scenario_analysis,
 )
 
 
@@ -48,3 +49,11 @@ def test_mcp_tools_adversarial_debate():
     assert "bull_case" in debate_res
     assert "bear_case" in debate_res
     assert "synthesis" in debate_res
+
+
+def test_mcp_scenarios_include_sample_provenance_and_tail_risk():
+    result = run_scenario_analysis("NVDA")
+    assert result["price_source"] == "sample"
+    assert len(result["scenarios"]) == 3
+    assert result["scenarios"][0]["cvar_95_pct"] >= result["scenarios"][0]["var_95_pct"]
+    assert "error" in run_scenario_analysis("UNKNOWN")

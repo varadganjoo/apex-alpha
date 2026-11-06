@@ -1,6 +1,7 @@
 """Unit tests for Quantitative Forecasting Engine & Monte Carlo simulation."""
 
 import pytest
+import numpy as np
 from app.quant_engine import QuantitativeForecaster
 from app.schemas import MarketQuote
 
@@ -62,3 +63,27 @@ def test_horizon_dispersion_increases_with_time(sample_quote):
     h90_spread = forecast.horizons[90].p90_bull - forecast.horizons[90].p10_bear
 
     assert h90_spread > h5_spread, "90-day price distribution must have wider dispersion than 5-day."
+
+
+def test_tail_losses_and_mean_come_from_the_simulated_distribution(sample_quote, monkeypatch):
+    # 20 equally weighted paths: the worst 5% is the single $50 outcome.
+    prices = np.array([50.0, 80.0] + [100.0] * 17 + [200.0])
+    monkeypatch.setattr(QuantitativeForecaster, "simulate_gbm_paths", lambda **kwargs: prices)
+    quote = sample_quote.model_copy(update={"price": 100.0})
+    h = QuantitativeForecaster.compute_forecast(quote, num_paths=20).horizons[30]
+    assert h.var_95_pct == 21.5  # interpolated P5 price = $78.50
+    assert h.cvar_95_pct == 50.0
+    assert h.expected_return_pct == 1.5  # mean $101.50, median $100
+    assert h.median_return_pct == 0.0
+
+
+def test_profitable_paths_do_not_report_negative_loss(sample_quote, monkeypatch):
+    monkeypatch.setattr(QuantitativeForecaster, "simulate_gbm_paths", lambda **kwargs: np.full(20, 200.0))
+    h = QuantitativeForecaster.compute_forecast(sample_quote, num_paths=20).horizons[30]
+    assert h.var_95_pct == h.cvar_95_pct == 0.0
+
+
+@pytest.mark.parametrize("paths", [0, -1, 1.5])
+def test_invalid_path_counts_are_rejected(sample_quote, paths):
+    with pytest.raises(ValueError, match="positive integer"):
+        QuantitativeForecaster.compute_forecast(sample_quote, num_paths=paths)

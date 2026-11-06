@@ -3,6 +3,7 @@ Orchestrates data ingestion, Monte Carlo simulation, adversarial debate, risk gu
 and the Human-in-the-Loop Portfolio Manager interrupt() review gate.
 """
 
+import math
 from typing import Any, Dict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -16,6 +17,7 @@ from app.schemas import (
     MarketQuote,
     OrderAction,
     OrderProposal,
+    PortfolioManagerDecision,
 )
 from app.sec_rag import SECFilingRAG
 
@@ -92,17 +94,18 @@ def stage_order_proposal_node(state: Dict[str, Any]) -> Dict[str, Any]:
     risk_reward = round((take_profit - quote.price) / max(0.01, quote.price - stop_loss), 2)
 
     total_portfolio_usd = 1000000.0  # $1,000,000 reference institutional portfolio
-    target_capital = round(total_portfolio_usd * (risk.recommended_allocation_pct / 100.0), 2)
 
     quant = RiskGuardEngine.quant_call(h30.probability_of_profit_pct, risk.recommended_allocation_pct)
     # The committee may veto a quant BUY but never creates one. The veto is not covered by the backtest.
     action = OrderAction.HOLD if quant == OrderAction.BUY and "bearish" in synthesis.stance.value else quant
+    allocation = 0.0 if action == OrderAction.HOLD else risk.recommended_allocation_pct
+    target_capital = round(total_portfolio_usd * allocation / 100.0, 2)
 
     proposal = OrderProposal(
         order_id=f"ORD-{quote.symbol}-001",
         symbol=quote.symbol,
         action=action,
-        target_allocation_pct=risk.recommended_allocation_pct,
+        target_allocation_pct=allocation,
         estimated_capital_usd=target_capital,
         suggested_entry_price=quote.price,
         stop_loss_price=stop_loss,
@@ -121,33 +124,33 @@ def portfolio_manager_gate_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """LangGraph interrupt() gate: Pauses execution for Portfolio Manager sign-off."""
     risk = state["risk"]
 
-    if risk.requires_pm_approval:
-        state["status"] = "awaiting_pm_approval"
-        resume_data = interrupt({
-            "symbol": state["symbol"],
-            "proposal": state["proposal"].model_dump() if state.get("proposal") else None,
-            "risk_metrics": risk.model_dump(),
-            "reasons": risk.risk_reasons,
-        })
-
-        # Resumed via Command(resume=...)
-        state["pm_approved"] = resume_data.get("approved", True)
-        state["pm_adjusted_allocation"] = resume_data.get("adjusted_allocation_pct")
-        state["pm_notes"] = resume_data.get("notes")
-    else:
-        state["pm_approved"] = True
+    state["status"] = "awaiting_pm_approval"
+    resume_data = interrupt({
+        "symbol": state["symbol"],
+        "proposal": state["proposal"].model_dump(),
+        "risk_metrics": risk.model_dump(),
+        "reasons": risk.risk_reasons or ["Every proposal requires an explicit portfolio manager decision."],
+    })
+    decision = PortfolioManagerDecision.model_validate(resume_data)
+    state["pm_approved"] = decision.approved
+    state["pm_adjusted_allocation"] = decision.adjusted_allocation_pct
+    state["pm_notes"] = decision.notes
 
     return state
 
 
 def commit_portfolio_rebalance_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Executes the rebalance or logs human portfolio manager override."""
-    is_approved = state.get("pm_approved", True)
+    is_approved = state.get("pm_approved") is True
     adjusted_pct = state.get("pm_adjusted_allocation")
-    proposal: OrderProposal = state["proposal"]
 
     if is_approved:
+        proposal: OrderProposal = state["proposal"]
         alloc = adjusted_pct if adjusted_pct is not None else proposal.target_allocation_pct
+        if not isinstance(alloc, (int, float)) or not math.isfinite(alloc) or not 0 <= alloc <= min(
+            proposal.target_allocation_pct, RiskGuardEngine.MAX_ALLOCATION_CAP_PCT
+        ):
+            raise ValueError("Allocation must be finite and may only reduce the proposed size within the 15% cap.")
         state["status"] = "executed"
         state["execution_result"] = (
             f"ORDER COMMITTED: {proposal.action.value.upper()} {proposal.symbol} @ ${proposal.suggested_entry_price} "

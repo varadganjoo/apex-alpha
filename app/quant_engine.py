@@ -90,9 +90,14 @@ class QuantitativeForecaster:
         annualized_drift: Optional[float] = None,
         num_paths: int = NUM_PATHS,
         random_seed: Optional[int] = 42,
+        risk_free: Optional[tuple[float, str]] = None,
     ) -> MonteCarloResult:
         """Generates multi-horizon probabilistic forecasts for a given asset."""
-        rf, rf_source = cls.risk_free_rate()
+        if type(num_paths) is not int or num_paths <= 0:
+            raise ValueError("num_paths must be a positive integer")
+        if not math.isfinite(quote.price) or quote.price <= 0:
+            raise ValueError("current price must be finite and positive")
+        rf, rf_source = risk_free if risk_free is not None else cls.risk_free_rate()
         drift = annualized_drift if annualized_drift is not None else cls.estimate_drift(quote, rf)
         vol = max(0.15, quote.annualized_volatility)
 
@@ -112,7 +117,10 @@ class QuantitativeForecaster:
             p50 = float(np.percentile(terminal_prices, 50))
             p90 = float(np.percentile(terminal_prices, 90))
 
-            expected_return = float(((p50 - quote.price) / quote.price) * 100.0)
+            returns_pct = (terminal_prices / quote.price - 1.0) * 100.0
+            p5_return = float(np.percentile(returns_pct, 5))
+            tail = returns_pct[returns_pct <= p5_return]
+            expected_return = float(np.mean(returns_pct))
             prob_profit = float((np.sum(terminal_prices > quote.price) / num_paths) * 100.0)
 
             horizons_dict[h] = QuantileForecast(
@@ -121,16 +129,20 @@ class QuantitativeForecaster:
                 p50_median=round(p50, 2),
                 p90_bull=round(p90, 2),
                 expected_return_pct=round(expected_return, 2),
+                median_return_pct=round((p50 / quote.price - 1.0) * 100.0, 2),
                 probability_of_profit_pct=round(prob_profit, 1),
+                var_95_pct=round(max(0.0, -p5_return), 2),
+                cvar_95_pct=round(max(0.0, -float(np.mean(tail))), 2),
             )
 
         return MonteCarloResult(
             symbol=quote.symbol,
             current_price=quote.price,
             simulated_paths=num_paths,
-            annualized_drift=round(drift, 4),
-            annualized_volatility=round(vol, 4),
+            random_seed=random_seed,
+            annualized_drift=drift,
+            annualized_volatility=vol,
             horizons=horizons_dict,
-            risk_free_rate=round(rf, 4),
+            risk_free_rate=rf,
             risk_free_source=rf_source,
         )

@@ -39,7 +39,7 @@ CAPM with $r_f$ the latest 3-month Treasury yield (U.S. Treasury daily par yield
 
 ### 1.3 Monte Carlo Quantile Cones
 
-We generate $M = 10,000$ discretized price trajectories over horizons $T \in \{5, 30, 90\}$ trading days. The terminal distribution $\hat{F}_T(s) = \frac{1}{M} \sum_{m=1}^M \mathbf{1}_{\{S_T^{(m)} \le s\}}$ yields calibrated quantiles:
+We generate $M = 10,000$ discretized price trajectories over horizons $T \in \{5, 30, 90\}$ trading days. The terminal distribution $\hat{F}_T(s) = \frac{1}{M} \sum_{m=1}^M \mathbf{1}_{\{S_T^{(m)} \le s\}}$ yields model-implied quantiles (not empirically calibrated probabilities):
 
 $$P_{10} = \hat{F}_T^{-1}(0.10), \quad P_{50} = \hat{F}_T^{-1}(0.50), \quad P_{90} = \hat{F}_T^{-1}(0.90)$$
 
@@ -55,7 +55,9 @@ $$\text{VaR}_\alpha(R) = -\inf \{ r \in \mathbb{R} : P(R \le r) > 1 - \alpha \}$
 
 $$\text{CVaR}_\alpha(R) = \mathbb{E}[-R \mid -R \ge \text{VaR}_\alpha(R)]$$
 
-VaR is approximated from the simulated 30-day 10th percentile ($1.2 \times$ the P10 loss) and CVaR as $1.35 \times$ VaR. Portfolio Manager review is mandatory when VaR is at least $8\%$, beta is at least $1.6$, or the Sharpe ratio is below $0.5$.
+For each horizon, compute each path's percentage return $r_i = 100(S_T^{(i)}/S_0 - 1)$. Let $q_5$ be the fifth percentile using NumPy's linear interpolation. VaR is $\max(0,-q_5)$; expected shortfall is $\max(0,-\operatorname{mean}\{r_i:r_i\le q_5\})$. Loss estimates are computed before rounding. These replace the earlier scaled-P10 proxies and remain conditional on the simulator's assumptions, not guaranteed loss limits.
+
+Every proposal requires an explicit Portfolio Manager decision. VaR of at least $8\%$, beta of at least $1.6$, and Sharpe below $0.5$ add review reasons. An override may only reduce the proposed size and must remain finite and within the $15\%$ cap. A HOLD allocates zero target capital. This demo has no authenticated role enforcement and sends no broker orders.
 
 ### 2.2 Fractional Kelly Sizing
 
@@ -66,6 +68,14 @@ $$f = \min\left(\kappa \cdot \max\left(0, \frac{p\,b - (1 - p)}{b}\right),\ f_{\
 ### 2.3 Buy / Hold / Sell Call
 
 **BUY** when $f > 0$, **SELL** when $p < 45\%$, otherwise **HOLD**. The LLM committee can downgrade a BUY to HOLD when its stance is bearish but can never create a BUY. The quant rule is backtested; the committee veto is not.
+
+### 2.4 Assumption sensitivity
+
+The risk desk compares three cases over 30 trading days: the base model; CAPM with the reversal tilt removed; and base drift with annualized volatility multiplied by $1.5$. The default uses 10,000 paths and seed 42 in each case. Alternate seeded forecasts retain their seed and path count. All cases use the base forecast's exact risk-free-rate snapshot, avoiding rounding or refetch differences. The comparison exposes sensitivity of profit probability, tail losses and sizing without selecting or optimizing a new strategy.
+
+`expected_return_pct` reports the arithmetic mean path return. `median_return_pct` reports the return implied by the unrounded median price. The P10/P90 band is a central **80% model-implied interval**, not a 90% confidence interval.
+
+Existing historical backtest tables were not rerun for this feature. The simulator and quant call rule are unchanged; new tail-risk values, sensitivity cases and mandatory manual review do not constitute additional backtested performance evidence.
 
 ---
 

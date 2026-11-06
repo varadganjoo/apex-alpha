@@ -7,13 +7,14 @@ import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, Iterator, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import Field
 from langgraph.types import Command
 
 from app.debate import AdversarialDebateEngine
@@ -22,6 +23,8 @@ from app import market_data
 from app.llm import describe_llm_error
 from app.quant_engine import QuantitativeForecaster
 from app.risk_guard import RiskGuardEngine
+from app.scenarios import compare_scenarios
+from app.schemas import PortfolioManagerDecision
 from app.sec_rag import SEC_DATABASE, SECFilingRAG
 
 logger = logging.getLogger("apex_alpha.api")
@@ -61,6 +64,8 @@ async def cdn_cache_headers(request: Request, call_next):
     return response
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
+# MemorySaver is process-local; consume each interrupt atomically within that process.
+RESUME_LOCK = Lock()
 
 # State keys each graph node produces; streamed to the UI as the run progresses.
 NODE_OUTPUT_KEYS = {
@@ -74,12 +79,10 @@ NODE_OUTPUT_KEYS = {
 }
 
 
-class ResumeAllocationRequest(BaseModel):
+class ResumeAllocationRequest(PortfolioManagerDecision):
     thread_id: str = Field(..., max_length=64, description="thread_id returned by the analyze stream's interrupt event")
-    approved: bool = True
     # A PM override may shrink the position but never exceed the hard institutional cap.
-    adjusted_allocation_pct: Optional[float] = Field(None, ge=0.0, le=RiskGuardEngine.MAX_ALLOCATION_CAP_PCT)
-    notes: Optional[str] = Field(None, max_length=500)
+    adjusted_allocation_pct: Optional[float] = Field(None, ge=0.0, le=RiskGuardEngine.MAX_ALLOCATION_CAP_PCT, allow_inf_nan=False)
 
 
 def _sse(event: str, data: Any) -> str:
@@ -183,6 +186,9 @@ def get_forecast(symbol: str):
         ).value,
         "allocation_cap_pct": RiskGuardEngine.MAX_ALLOCATION_CAP_PCT,
         "kelly_fraction": RiskGuardEngine.KELLY_SAFETY_FRACTION,
+        "scenarios": compare_scenarios(quote, forecast),
+        "price_source": quote.source,
+        "prices_as_of": quote.as_of,
     }
 
 
@@ -261,20 +267,25 @@ def resume_analysis(symbol: str, body: ResumeAllocationRequest):
         raise HTTPException(status_code=400, detail=f"thread_id does not belong to {sym}.")
 
     config = {"configurable": {"thread_id": body.thread_id}}
-    if _pending_interrupt(config) is None:
-        # ponytail: MemorySaver is per-instance; a recycled serverless instance loses paused runs.
-        # Swap in a Postgres checkpointer if sign-offs must survive restarts.
-        raise HTTPException(
-            status_code=409,
-            detail="No pending sign-off for this run (it was already decided, or the server restarted). Run the committee again.",
-        )
+    with RESUME_LOCK:
+        pending = _pending_interrupt(config)
+        if pending is None:
+            # shortcut: MemorySaver loses paused runs on restart; use a durable checkpointer before real trading.
+            raise HTTPException(
+                status_code=409,
+                detail="No pending sign-off for this run (it was already decided, or the server restarted). Run the committee again.",
+            )
 
-    resume_payload = {
-        "approved": body.approved,
-        "adjusted_allocation_pct": body.adjusted_allocation_pct,
-        "notes": body.notes,
-    }
-    result = apex_alpha_graph.invoke(Command(resume=resume_payload), config=config)
+        if body.approved and body.adjusted_allocation_pct is not None:
+            if body.adjusted_allocation_pct > pending["proposal"]["target_allocation_pct"]:
+                raise HTTPException(status_code=422, detail="A size override may only reduce the proposed allocation.")
+
+        resume_payload = {
+            "approved": body.approved,
+            "adjusted_allocation_pct": body.adjusted_allocation_pct,
+            "notes": body.notes,
+        }
+        result = apex_alpha_graph.invoke(Command(resume=resume_payload), config=config)
     return {
         "symbol": sym,
         "thread_id": body.thread_id,

@@ -2,7 +2,6 @@
 Enforces hard mathematical risk invariants: Value-at-Risk (VaR 95%), CVaR, and allocation caps.
 """
 
-import math
 from typing import List
 from app.schemas import MarketQuote, MonteCarloResult, OrderAction, RiskMetrics
 
@@ -29,19 +28,15 @@ class RiskGuardEngine:
     def evaluate_risk(cls, quote: MarketQuote, forecast: MonteCarloResult) -> RiskMetrics:
         """Evaluates portfolio risk and calculates safe Kelly position sizing."""
         reasons: List[str] = []
-        requires_pm = False
 
         # 1. 30-day horizon forecast
         h30 = forecast.horizons.get(30)
         if not h30:
             h30 = list(forecast.horizons.values())[0]
 
-        # 2. Value-at-Risk (VaR 95%) and CVaR
-        # VaR 95% = loss percentage at 5th percentile
-        # Using P10 as conservative proxy scaled to 95%
-        downside_loss = max(0.0, quote.price - h30.p10_bear)
-        var_95_pct = round((downside_loss / quote.price) * 100.0 * 1.2, 2)
-        cvar_95_pct = round(var_95_pct * 1.35, 2)  # Expected shortfall beyond VaR
+        # Tail losses are measured on the same paths as the forecast.
+        var_95_pct = h30.var_95_pct
+        cvar_95_pct = h30.cvar_95_pct
 
         # 3. Sharpe and Sortino Ratios (Annualized)
         # Same rate the forecast's expected return was built on (live 3-month Treasury when available).
@@ -73,7 +68,6 @@ class RiskGuardEngine:
 
         # 6. Enforce Deterministic Risk Invariants
         if var_95_pct >= cls.MAX_UNMEDIATED_VAR_PCT:
-            requires_pm = True
             reasons.append(
                 f"Value-at-Risk ({var_95_pct}%) exceeds threshold ({cls.MAX_UNMEDIATED_VAR_PCT}%). Requires PM authorization."
             )
@@ -84,13 +78,11 @@ class RiskGuardEngine:
             )
 
         if quote.beta >= 1.6:
-            requires_pm = True
             reasons.append(
                 f"High systematic market sensitivity (Beta: {quote.beta} >= 1.6). Portfolio vulnerable to macro drawdowns."
             )
 
         if sharpe_ratio < 0.5:
-            requires_pm = True
             reasons.append(
                 f"Sub-optimal risk-adjusted return profile (Sharpe Ratio: {sharpe_ratio} < 0.50)."
             )
@@ -104,6 +96,6 @@ class RiskGuardEngine:
             max_drawdown_pct=max_drawdown_pct,
             raw_kelly_pct=raw_kelly_pct,
             recommended_allocation_pct=recommended_allocation,
-            requires_pm_approval=requires_pm,
-            risk_reasons=reasons,
+            requires_pm_approval=True,
+            risk_reasons=reasons or ["Every proposal requires an explicit portfolio manager decision."],
         )

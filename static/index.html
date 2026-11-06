@@ -167,6 +167,28 @@
       </div>
       <dl class="grid grid-cols-2 lg:grid-cols-5 divide-x divide-bb-line border-b border-bb-line" id="riskCards"></dl>
       <div class="px-4 py-3 border-b border-bb-line text-xs" id="riskReasons"></div>
+      <div class="border-b border-bb-line">
+        <h3 class="px-4 pt-4 text-xs font-bold text-bb-amber">ASSUMPTION STRESS LAB</h3>
+        <p class="px-4 py-2 text-xs text-bb-muted" id="scenarioSource"></p>
+        <p class="px-4 pb-3 text-xs text-bb-muted" id="scenarioDescription">30 trading days, 10,000 seeded paths per case. Hypothetical assumptions, not historical crisis replays or calibrated probabilities.</p>
+        <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Assumption stress comparison" aria-describedby="scenarioDescription">
+          <table class="w-full text-xs whitespace-nowrap text-right">
+            <caption class="sr-only">30-day assumption comparison</caption>
+            <thead class="border-y border-bb-line text-bb-muted"><tr>
+              <th scope="col" class="px-4 py-2 text-left">Assumption</th>
+              <th scope="col" class="px-4 py-2">Drift / year</th>
+              <th scope="col" class="px-4 py-2">Vol / year</th>
+              <th scope="col" class="px-4 py-2">Median return</th>
+              <th scope="col" class="px-4 py-2">Profit probability</th>
+              <th scope="col" class="px-4 py-2">VaR 95%</th>
+              <th scope="col" class="px-4 py-2">Expected shortfall</th>
+              <th scope="col" class="px-4 py-2">Size</th>
+            </tr></thead>
+            <tbody id="scenarioRows" class="divide-y divide-bb-line"></tbody>
+          </table>
+        </div>
+        <p class="px-4 py-3 text-[11px] text-bb-muted">CAPM only removes the 52-week-high reversal tilt. The volatility shock keeps base drift and increases volatility by 50%. Each case shares the seed and risk-free rate. Sizing is a model output, not an order; compare how much it changes before deciding.</p>
+      </div>
       <div class="p-4 space-y-4" id="pmGateCard"></div>
     </section>
   </main>
@@ -402,10 +424,21 @@
         stat('Expected shortfall', pct(r.cvar_95_pct), 'Average loss beyond VaR') +
         stat('Recommended size', pct(r.recommended_allocation_pct), `${Math.round(d.kelly_fraction * 100)}% of Kelly (raw ${pct(r.raw_kelly_pct)})`, 'text-bb-amber') +
         stat('Position cap', pct(d.allocation_cap_pct), `Sharpe ${r.sharpe_ratio}, max drawdown ${pct(r.max_drawdown_pct)}`);
-      $('riskReasons').innerHTML = r.requires_pm_approval
-        ? `<p class="font-bold text-bb-amber mb-1">Portfolio manager sign-off required:</p><ul class="list-disc ml-5 space-y-0.5 text-bb-muted">${r.risk_reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
-        : '<p class="text-bb-up font-bold">Within automatic limits. Orders commit without sign-off.</p>';
+      $('riskReasons').innerHTML = `<p class="font-bold text-bb-amber mb-1">Every order requires portfolio manager sign-off:</p><ul class="list-disc ml-5 space-y-0.5 text-bb-muted">${r.risk_reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`;
       $('riskReasons').insertAdjacentHTML('beforeend', `<p class="text-bb-muted mt-2">${BACKTEST_NOTE}</p>`);
+      $('scenarioSource').textContent = d.price_source === 'sample'
+        ? 'Illustrative sample prices. These comparisons are not based on a live quote.'
+        : `Prices: ${d.price_source}, last close ${d.prices_as_of || 'date unavailable'}.`;
+      $('scenarioRows').innerHTML = d.scenarios.map((s) => `<tr>
+        <th scope="row" class="px-4 py-3 text-left font-normal">${esc(s.label)}</th>
+        <td class="px-4 py-3">${pct(s.annualized_drift * 100, true)}</td>
+        <td class="px-4 py-3">${pct(s.annualized_volatility * 100)}</td>
+        <td class="px-4 py-3 ${tone(s.median_return_pct)}">${pct(s.median_return_pct, true)}</td>
+        <td class="px-4 py-3">${pct(s.probability_of_profit_pct)}</td>
+        <td class="px-4 py-3">${pct(s.var_95_pct)}</td>
+        <td class="px-4 py-3">${pct(s.cvar_95_pct)}</td>
+        <td class="px-4 py-3 text-bb-amber">${pct(s.allocation_pct)}</td>
+      </tr>`).join('');
     }
 
     // ---------- committee run ----------
@@ -562,7 +595,7 @@
       if (run.status === 'awaiting' || run.status === 'deciding') {
         set('waiting for PM', 'text-bb-amber');
         const p = run.payload.proposal;
-        const capPct = state.detail[state.active].allocation_cap_pct;
+        const capPct = Math.min(p.target_allocation_pct, state.detail[state.active].allocation_cap_pct);
         card.innerHTML = `
           <p class="text-xs text-bb-muted">Order <span class="text-bb-text">${esc(p.order_id)}</span>, paused at <code>interrupt()</code> on thread <span class="text-bb-text">${esc(run.thread_id)}</span></p>
           <dl class="grid grid-cols-2 md:grid-cols-4 border border-bb-line divide-x divide-bb-line">
@@ -576,7 +609,7 @@
             ${p.action === 'hold' ? '' : `
             <div class="grid gap-1">
               <label for="pmAllocation" class="text-xs text-bb-muted">Size override, % (max ${capPct})</label>
-              <input id="pmAllocation" type="number" min="0" max="${capPct}" step="0.1" value="${p.target_allocation_pct}" class="w-32 h-9 bg-bb-surface border border-bb-line px-2" />
+              <input id="pmAllocation" type="number" min="0" max="${capPct}" step="0.01" value="${p.target_allocation_pct}" class="w-32 h-9 bg-bb-surface border border-bb-line px-2" />
             </div>`}
             <div class="grid gap-1 ${p.action === 'hold' ? 'md:col-span-2' : ''}">
               <label for="pmNotes" class="text-xs text-bb-muted">Decision notes (optional)</label>
@@ -600,8 +633,8 @@
         return;
       }
       if (run.status === 'done') {
-        set('not required', 'text-bb-up');
-        card.innerHTML = '<p class="text-bb-up">Risk was within automatic limits, so the graph committed without sign-off.</p>';
+        set('complete', 'text-bb-muted');
+        card.innerHTML = '<p class="text-bb-muted">The analysis completed. Start a new committee run to stage an order for review.</p>';
       }
     }
 

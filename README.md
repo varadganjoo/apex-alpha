@@ -81,6 +81,16 @@ flowchart TD
 
 The UI streams each graph node as it finishes (`POST /api/tickers/{symbol}/analyze/stream`), shows whether every citation was found verbatim in the filing excerpts, and resumes the paused graph through `POST /api/tickers/{symbol}/resume`. A portfolio manager can shrink a position but never exceed the 15% cap.
 
+## Challenge the assumptions
+
+The **Risk Desk** includes an assumption stress lab, available without an LLM call. It compares the base model with CAPM alone (removing the 52-week-high reversal tilt) and a volatility shock (50% higher volatility, unchanged drift). The cases share the random seed, path count and risk-free-rate snapshot so changes reflect the assumptions. Each shows 30-day median return, simulated profit probability, VaR, expected shortfall and fractional-Kelly size. Source labels distinguish illustrative sample prices from live data.
+
+These are hypothetical sensitivity checks, not new backtested strategies or historical crisis replays. Their probabilities depend on model assumptions; they are not calibrated confidence levels. The comparison is returned in `GET /api/tickers/{symbol}/forecast` as `scenarios`, and by the MCP tool `run_scenario_analysis`.
+
+VaR now measures the simulated fifth-percentile return; expected shortfall measures the average return at or below that percentile. Both are displayed as nonnegative losses. `expected_return_pct` is the arithmetic mean of simulated returns; `median_return_pct` is the return to the median price. Older consumers that used `expected_return_pct` as a median should use the new field instead.
+
+**Every proposal now pauses for an explicit decision**, including those within risk thresholds. Resume requests must include a JSON boolean `approved`; omitted or coerced values are rejected. Size overrides may only reduce the proposed allocation, and must be finite and within 15%. A committee-vetoed HOLD has zero target capital. Execution remains simulated; no order reaches a broker.
+
 ---
 
 ## Screenshots
@@ -102,7 +112,9 @@ Captured from the live demo.
 ## Quickstart
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+# Activate .venv (Windows: .venv\Scripts\activate; macOS/Linux: source .venv/bin/activate)
+python -m pip install -r requirements.txt
 cp .env.example .env          # add GEMINI_API_KEY, GROQ_API_KEY, SEC_USER_AGENT
 uvicorn app.main:app --port 8030 --reload
 ```
@@ -139,6 +151,16 @@ python -m pytest tests/ -v
 ```
 
 Covers Monte Carlo quantiles, the risk engine and order rule, the LangGraph interrupt/resume lifecycle, the HTTP API (streaming, sign-off validation, error handling, cache headers), live-data parsing (SEC quarter derivation, filing excerpts, fallbacks), the MCP server, and the Gemini and Groq fallback chain. Tests run offline against the sample dataset; CI runs them on every push.
+
+Explicit desktop/mobile browser checks (requires installed Google Chrome and network access for CDN assets):
+
+```bash
+python -m pytest tests/browser_smoke.py -v
+```
+
+The browser renders the actual UI against FastAPI's test client and the suite's offline provider fixtures. It checks the stress table, keyboard access, mobile scrolling, invalid resizing, approval, rejection and escaped decision notes. It does not contact a live model provider.
+
+This is a public research demo, not an enterprise trading deployment. It has no authenticated portfolio-manager roles, durable/distributed review storage, or deployment-verified spend controls. Paused runs use per-process memory and do not survive restarts. Do not connect a broker or expose an unrestricted paid model key without those controls. Dependency ranges are not a reproducible production lockfile. See [release evidence](docs/RELEASE_EVIDENCE.md) for the checks and limits of this change.
 
 ---
 

@@ -63,13 +63,17 @@ class QuantileForecast(BaseModel):
     p50_median: float
     p90_bull: float
     expected_return_pct: float
+    median_return_pct: float
     probability_of_profit_pct: float
+    var_95_pct: float
+    cvar_95_pct: float
 
 
 class MonteCarloResult(BaseModel):
     symbol: str
     current_price: float
     simulated_paths: int = 10000
+    random_seed: Optional[int] = 42
     annualized_drift: float
     annualized_volatility: float
     horizons: Dict[int, QuantileForecast]
@@ -130,6 +134,12 @@ class OrderProposal(BaseModel):
     take_profit_price: float
     risk_reward_ratio: float
     rationale: str
+
+
+class PortfolioManagerDecision(BaseModel):
+    approved: bool = Field(..., strict=True)
+    adjusted_allocation_pct: Optional[float] = Field(None, ge=0.0, allow_inf_nan=False)
+    notes: Optional[str] = Field(None, max_length=500)
 
 
 class MarketAnalysisState(BaseModel):

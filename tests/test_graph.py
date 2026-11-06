@@ -34,19 +34,20 @@ def test_graph_resumes_with_pm_approval(graph):
     initial_state = {"symbol": "NVDA"}
 
     # First run: pause at gate
-    graph.invoke(initial_state, config=config)
+    paused = graph.invoke(initial_state, config=config)
+    allocation = round(paused["proposal"].target_allocation_pct / 2, 2)
 
     # Resume with approval and adjusted allocation
     resume_payload = {
         "approved": True,
-        "adjusted_allocation_pct": 12.5,
-        "notes": "Portfolio Manager signed off on 12.5% target allocation.",
+        "adjusted_allocation_pct": allocation,
+        "notes": "Portfolio Manager signed off on half size.",
     }
 
     result = graph.invoke(Command(resume=resume_payload), config=config)
     assert result.get("status") == "executed"
     assert "ORDER COMMITTED" in result.get("execution_result", "")
-    assert "12.5%" in result.get("execution_result", "")
+    assert f"{allocation}%" in result.get("execution_result", "")
 
 
 @pytest.mark.parametrize(
@@ -83,3 +84,39 @@ def test_committee_can_veto_a_buy_but_not_create_one(allocation, stance, expecte
     )
     state = stage_order_proposal_node({"quote": quote, "risk": risk, "synthesis": synthesis, "monte_carlo": forecast})
     assert state["proposal"].action.value == expected_action
+    if expected_action == "hold":
+        assert state["proposal"].target_allocation_pct == 0.0
+        assert state["proposal"].estimated_capital_usd == 0.0
+
+
+def test_low_risk_proposal_still_requires_a_human_decision(graph, monkeypatch):
+    from app.risk_guard import RiskGuardEngine
+    original = RiskGuardEngine.evaluate_risk
+    monkeypatch.setattr(RiskGuardEngine, "evaluate_risk", lambda **kw: original(**kw).model_copy(
+        update={"requires_pm_approval": False, "risk_reasons": []}
+    ))
+    result = graph.invoke({"symbol": "AAPL"}, config={"configurable": {"thread_id": "low-risk-gate"}})
+    assert result.get("__interrupt__")
+    assert result.get("execution_result") is None
+
+
+@pytest.mark.parametrize("payload", [{"approved": "yes"}, {"approved": True, "adjusted_allocation_pct": 15.0},
+                                     {"approved": True, "adjusted_allocation_pct": float("nan")}])
+def test_direct_graph_resume_cannot_bypass_decision_validation(graph, payload):
+    config = {"configurable": {"thread_id": "invalid-decision"}}
+    graph.invoke({"symbol": "NVDA"}, config=config)
+    with pytest.raises(ValueError):
+        graph.invoke(Command(resume=payload), config=config)
+
+
+def test_commit_without_explicit_approval_cancels():
+    from app.graph import commit_portfolio_rebalance_node
+    assert commit_portfolio_rebalance_node({})["status"] == "rejected_by_pm"
+
+
+def test_empty_graph_resume_keeps_order_uncommitted(graph):
+    config = {"configurable": {"thread_id": "empty-resume"}}
+    graph.invoke({"symbol": "NVDA"}, config=config)
+    result = graph.invoke(Command(resume={}), config=config)
+    assert result.get("execution_result") is None
+    assert result.get("__interrupt__")
